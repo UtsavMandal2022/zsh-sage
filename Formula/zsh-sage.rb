@@ -1,7 +1,7 @@
 class ZshSage < Formula
   desc "Intelligent zsh autosuggestions with multi-signal ranking"
-  homepage "https://github.com/YOUR_USERNAME/zsh-sage"
-  url "https://github.com/YOUR_USERNAME/zsh-sage/archive/refs/tags/v0.1.0.tar.gz"
+  homepage "https://github.com/UtsavMandal2022/zsh-sage"
+  url "https://github.com/UtsavMandal2022/zsh-sage/archive/refs/tags/v0.1.0.tar.gz"
   sha256 "UPDATE_WITH_ACTUAL_SHA256"
   license "MIT"
 

@@ -92,7 +92,20 @@ ${b}KEYBINDINGS${r}
   ${c}ctrl+right${r}      Accept word-by-word
   ${d}Just type to see suggestions appear as ghost text${r}
 
-${d}https://github.com/YOUR_USERNAME/zsh-sage${r}
+${b}CONFIDENCE COLORS${r}
+  Ghost text color reflects how confident the suggestion is:
+  $(printf '\033[38;5;108m  ████  high   (score > 0.7)  — sage green\033[0m')
+  $(printf '\033[38;5;245m  ████  medium (0.3 - 0.7)   — grey\033[0m')
+  $(printf '\033[38;5;240m  ████  low    (score < 0.3)  — faint\033[0m')
+
+  ${d}Customize in ~/.zshrc:${r}
+  ${y}export${r} ZSH_SAGE_COLOR_HIGH=${g}108${r}             ${d}# high confidence color (256-color)${r}
+  ${y}export${r} ZSH_SAGE_COLOR_MED=${g}245${r}              ${d}# medium confidence color${r}
+  ${y}export${r} ZSH_SAGE_COLOR_LOW=${g}240${r}              ${d}# low confidence color${r}
+  ${y}export${r} ZSH_SAGE_CONFIDENCE_HIGH=${g}0.70${r}       ${d}# threshold for high${r}
+  ${y}export${r} ZSH_SAGE_CONFIDENCE_LOW=${g}0.30${r}        ${d}# threshold for low${r}
+
+${d}https://github.com/UtsavMandal2022/zsh-sage${r}
 EOF
 }
 
@@ -205,6 +218,6 @@ _sage_cli_credits() {
   ${d}"Your shell should know you
    better than you know yourself."${r}
 
-  ${d}github.com/utsavmandal2022/zsh-sage${r}
+  ${d}github.com/UtsavMandal2022/zsh-sage${r}
 EOF
 }
