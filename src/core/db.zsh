@@ -6,7 +6,7 @@
 #
 
 typeset -g _SAGE_COPROC_ALIVE=0
-typeset -g _SAGE_EOF_SENTINEL="__SAGE_EOF__"
+typeset -g _SAGE_EOF_SENTINEL="__SAGE_e0f_7d2b9k__"
 
 # ── Coprocess management ─────────────────────────────────────────
 
@@ -69,10 +69,11 @@ _sage_db_query_raw() {
     print -p ".print ${_SAGE_EOF_SENTINEL}" 2>/dev/null
 
     # Read until sentinel (with timeout to prevent hangs)
+    # Use short timeout — queries should complete in <100ms
     local line
     local result=""
-    while IFS= read -p -t 5 line 2>/dev/null; do
-        [[ "$line" == "$_SAGE_EOF_SENTINEL" ]] && break
+    while IFS= read -p -t 1 line 2>/dev/null; do
+        [[ "$line" == *"${_SAGE_EOF_SENTINEL}"* ]] && break
         if [[ -n "$result" ]]; then
             result+=$'\n'"${line}"
         else

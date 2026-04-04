@@ -112,7 +112,7 @@ seq_stats AS (
     GROUP BY command
 )
 SELECT
-    s.command,
+    REPLACE(REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), ''), CHAR(92), '') as clean_cmd,
     (
         ${wf} * (CASE WHEN gm.max_freq > 0
                  THEN MIN(1.0, SQRT(CAST(s.frequency AS REAL) / gm.max_freq))
@@ -138,13 +138,12 @@ FROM stats s
 CROSS JOIN global_max gm
 LEFT JOIN dir_stats ds ON ds.command = s.command
 LEFT JOIN seq_stats ss ON ss.command = s.command
-WHERE s.command LIKE '${like_prefix}%' ESCAPE '$'
+WHERE s.command LIKE '${like_prefix}%' ESCAPE '\$'
 ORDER BY score DESC
 LIMIT 1;"
 
     local result
     result=$(_sage_db_query "$sql")
-    # Result is "command|score" — extract just the command from first line
     [[ -n "$result" ]] && printf '%s' "${result%%|*}"
 }
 
@@ -213,7 +212,7 @@ SELECT
                  THEN CAST(s.success_count AS REAL) / (s.success_count + s.fail_count)
                  ELSE 0.5 END)
     ) as score,
-    s.command
+    REPLACE(REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), ''), CHAR(92), '') as clean_cmd
 FROM stats s
 CROSS JOIN global_max gm
 LEFT JOIN dir_stats ds ON ds.command = s.command
