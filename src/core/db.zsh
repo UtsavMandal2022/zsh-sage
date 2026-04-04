@@ -220,33 +220,59 @@ WHERE command LIKE '${like_cmd}%' ESCAPE '$'
   AND prev_command = '${prev_cmd}';"
 }
 
-# Import existing zsh history (uses fork — runs once, not perf-critical)
+# Import existing zsh history with sequence inference
+# Parses consecutive history lines to build prev_command relationships
 _sage_db_import_history() {
     local histfile="${1:-$HISTFILE}"
     local count=0
+    local prev_cmd=""
+    local prev_ts=0
 
     echo "Importing history from $histfile..."
 
     # Build batch SQL for speed
     local batch_sql=""
     while IFS= read -r line; do
-        [[ "$line" == ": "* ]] && {
-            line="${line#*;}"
-        }
-        [[ -z "$line" ]] && continue
+        # Parse zsh extended history format: ": timestamp:0;command"
+        local ts=0
+        local cmd=""
 
-        local escaped="$(_sage_sql_escape "$line")"
-        local ts=$(date +%s)
+        if [[ "$line" == ": "* ]]; then
+            # Extract timestamp
+            local meta="${line#: }"
+            ts="${meta%%:*}"
+            # Extract command (everything after the first ;)
+            cmd="${line#*;}"
+        else
+            # Plain command (no timestamp)
+            cmd="$line"
+            ts=$(date +%s)
+        fi
 
-        batch_sql+="INSERT OR IGNORE INTO stats (command, directory, frequency, last_used, success_count, fail_count)
+        # Skip empty, very short, or multiline continuation
+        [[ -z "$cmd" ]] && continue
+        (( ${#cmd} < 2 )) && continue
+
+        local escaped="$(_sage_sql_escape "$cmd")"
+        local escaped_prev="$(_sage_sql_escape "$prev_cmd")"
+
+        # Insert into commands table (with sequence data)
+        batch_sql+="INSERT INTO commands (command, directory, prev_command, exit_code, timestamp, git_branch)
+VALUES ('${escaped}', '~', '${escaped_prev}', 0, ${ts}, '');
+"
+        # Upsert into stats table
+        batch_sql+="INSERT INTO stats (command, directory, frequency, last_used, success_count, fail_count)
 VALUES ('${escaped}', '~', 1, ${ts}, 1, 0)
 ON CONFLICT(command, directory) DO UPDATE SET
-    frequency = frequency + 1;
+    frequency = frequency + 1,
+    last_used = MAX(last_used, ${ts});
 "
         count=$((count + 1))
+        prev_cmd="$cmd"
+        prev_ts="$ts"
 
-        # Flush every 500 rows
-        if (( count % 500 == 0 )); then
+        # Flush every 300 rows
+        if (( count % 300 == 0 )); then
             _sage_db_fork "BEGIN; ${batch_sql} COMMIT;"
             batch_sql=""
             echo "  ...imported $count entries"
@@ -258,7 +284,7 @@ ON CONFLICT(command, directory) DO UPDATE SET
         _sage_db_fork "BEGIN; ${batch_sql} COMMIT;"
     fi
 
-    echo "Imported $count history entries."
+    echo "Imported $count history entries (with sequence data)."
 }
 
 # ── Cleanup hook ─────────────────────────────────────────────────
