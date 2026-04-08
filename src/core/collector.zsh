@@ -10,6 +10,33 @@ typeset -g _SAGE_COMMAND_START=0
 _sage_collector_preexec() {
     _SAGE_LAST_COMMAND="$1"
     _SAGE_COMMAND_START=$(date +%s)
+
+    # Detect implicit accept: user typed a command that matches (or
+    # prefix-extends) the suggestion we were showing. If so, record it
+    # as an accept so adaptive weights can learn from typed-through cases.
+    #
+    # Note: _SAGE_CURRENT_SUGGESTION is only non-empty if a ghost was
+    # visible AND the user did NOT explicitly accept (which clears state).
+    if [[ "$ZSH_SAGE_COLLECT_ACCEPTS" == "true" \
+          && -n "$_SAGE_CURRENT_SUGGESTION" \
+          && ( "$1" == "$_SAGE_CURRENT_SUGGESTION" || "$1" == "$_SAGE_CURRENT_SUGGESTION "* ) ]]; then
+        {
+            _sage_db_record_accept \
+                "$_SAGE_CURRENT_FREQ_CONTRIB" \
+                "$_SAGE_CURRENT_REC_CONTRIB" \
+                "$_SAGE_CURRENT_DIR_CONTRIB" \
+                "$_SAGE_CURRENT_SEQ_CONTRIB" \
+                "$_SAGE_CURRENT_SUCC_CONTRIB"
+        } &!
+    fi
+
+    # Clear suggestion state now that the command is executing
+    _SAGE_CURRENT_SUGGESTION=""
+    _SAGE_CURRENT_FREQ_CONTRIB=0
+    _SAGE_CURRENT_REC_CONTRIB=0
+    _SAGE_CURRENT_DIR_CONTRIB=0
+    _SAGE_CURRENT_SEQ_CONTRIB=0
+    _SAGE_CURRENT_SUCC_CONTRIB=0
 }
 
 # Called after a command completes (before next prompt)

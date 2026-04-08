@@ -15,6 +15,14 @@ typeset -g _SAGE_LAST_HIGHLIGHT=""
 typeset -g _SAGE_AI_PID=0
 typeset -g _SAGE_AI_TMPFILE="/tmp/zsh-sage-ai-$$"
 
+# Cached per-signal contributions for the currently shown suggestion
+# Used by the collector to record accepts with their signal breakdown
+typeset -g _SAGE_CURRENT_FREQ_CONTRIB=0
+typeset -g _SAGE_CURRENT_REC_CONTRIB=0
+typeset -g _SAGE_CURRENT_DIR_CONTRIB=0
+typeset -g _SAGE_CURRENT_SEQ_CONTRIB=0
+typeset -g _SAGE_CURRENT_SUCC_CONTRIB=0
+
 # Confidence color thresholds (256-color)
 typeset -g ZSH_SAGE_COLOR_HIGH="${ZSH_SAGE_COLOR_HIGH:-108}"    # sage green
 typeset -g ZSH_SAGE_COLOR_MED="${ZSH_SAGE_COLOR_MED:-245}"      # medium grey
@@ -42,6 +50,16 @@ _sage_confidence_style() {
     else
         echo "fg=${ZSH_SAGE_COLOR_LOW}"
     fi
+}
+
+# Clear all suggestion state (used in several widgets)
+_sage_clear_state() {
+    _SAGE_CURRENT_SUGGESTION=""
+    _SAGE_CURRENT_FREQ_CONTRIB=0
+    _SAGE_CURRENT_REC_CONTRIB=0
+    _SAGE_CURRENT_DIR_CONTRIB=0
+    _SAGE_CURRENT_SEQ_CONTRIB=0
+    _SAGE_CURRENT_SUCC_CONTRIB=0
 }
 
 # ── Highlight management ─────────────────────────────────────────
@@ -90,20 +108,32 @@ _sage_update_suggestion() {
     if [[ -z "$prefix" ]]; then
         _sage_highlight_reset
         POSTDISPLAY=""
-        _SAGE_CURRENT_SUGGESTION=""
+        _sage_clear_state
         return
     fi
 
-    # Get best suggestion with score
+    # Get best suggestion with score and signal breakdown
     local result
     result=$(_sage_rank_with_score "$prefix" "$PWD" "$_SAGE_PREV_COMMAND")
 
     if [[ -n "$result" ]]; then
-        local score="${result%%|*}"
-        local suggestion="${result#*|}"
+        # Split pipe-delimited result:
+        # score|command|freq_contrib|rec_contrib|dir_contrib|seq_contrib|succ_contrib
+        # (sequence override fast path returns only "score|command" — contribs will be empty)
+        local -a fields
+        fields=("${(@s:|:)result}")
+        local score="${fields[1]}"
+        local suggestion="${fields[2]}"
 
         if [[ -n "$suggestion" && "$suggestion" != "$prefix" && "$suggestion" == "$prefix"* ]]; then
             _SAGE_CURRENT_SUGGESTION="$suggestion"
+            # Cache signal contributions (default to 0 for fast-path results)
+            _SAGE_CURRENT_FREQ_CONTRIB="${fields[3]:-0}"
+            _SAGE_CURRENT_REC_CONTRIB="${fields[4]:-0}"
+            _SAGE_CURRENT_DIR_CONTRIB="${fields[5]:-0}"
+            _SAGE_CURRENT_SEQ_CONTRIB="${fields[6]:-0}"
+            _SAGE_CURRENT_SUCC_CONTRIB="${fields[7]:-0}"
+
             POSTDISPLAY="${suggestion#$prefix}"
 
             local style
@@ -116,7 +146,7 @@ _sage_update_suggestion() {
     # No match — clear
     _sage_highlight_reset
     POSTDISPLAY=""
-    _SAGE_CURRENT_SUGGESTION=""
+    _sage_clear_state
 
     # AI fallback
     if [[ "$ZSH_SAGE_AI_ENABLED" == "true" && -n "$ZSH_SAGE_API_KEY" ]]; then
@@ -129,11 +159,23 @@ _sage_accept_widget() {
     emulate -L zsh
 
     if [[ -n "$_SAGE_CURRENT_SUGGESTION" ]]; then
+        # Record accept asynchronously with cached signal contributions
+        if [[ "$ZSH_SAGE_COLLECT_ACCEPTS" == "true" ]]; then
+            {
+                _sage_db_record_accept \
+                    "$_SAGE_CURRENT_FREQ_CONTRIB" \
+                    "$_SAGE_CURRENT_REC_CONTRIB" \
+                    "$_SAGE_CURRENT_DIR_CONTRIB" \
+                    "$_SAGE_CURRENT_SEQ_CONTRIB" \
+                    "$_SAGE_CURRENT_SUCC_CONTRIB"
+            } &!
+        fi
+
         _sage_highlight_reset
         BUFFER="$_SAGE_CURRENT_SUGGESTION"
         CURSOR=${#BUFFER}
         POSTDISPLAY=""
-        _SAGE_CURRENT_SUGGESTION=""
+        _sage_clear_state
         zle -R
     else
         zle .forward-char

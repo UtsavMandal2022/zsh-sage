@@ -212,7 +212,19 @@ SELECT
                  THEN CAST(s.success_count AS REAL) / (s.success_count + s.fail_count)
                  ELSE 0.5 END)
     ) as score,
-    REPLACE(REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), ''), CHAR(92), '') as clean_cmd
+    REPLACE(REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), ''), CHAR(92), '') as clean_cmd,
+    -- Individual weighted contributions for adaptive weight learning
+    ${wf} * (CASE WHEN gm.max_freq > 0
+             THEN MIN(1.0, SQRT(CAST(s.frequency AS REAL) / gm.max_freq))
+             ELSE 0 END) as freq_contrib,
+    ${wr} * MAX(0, 1.0 - (CAST(${now} - s.last_used AS REAL) / ${decay_window})) as rec_contrib,
+    ${wd} * (CASE WHEN ds.dir_freq IS NOT NULL AND gm.max_freq > 0
+             THEN MIN(1.0, SQRT(CAST(ds.dir_freq AS REAL) / gm.max_freq))
+             ELSE 0 END) as dir_contrib,
+    ${ws} * COALESCE(ss.seq_score, 0) as seq_contrib,
+    ${wk} * (CASE WHEN (s.success_count + s.fail_count) > 0
+             THEN CAST(s.success_count AS REAL) / (s.success_count + s.fail_count)
+             ELSE 0.5 END) as succ_contrib
 FROM stats s
 CROSS JOIN global_max gm
 LEFT JOIN dir_stats ds ON ds.command = s.command

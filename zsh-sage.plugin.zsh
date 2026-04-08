@@ -16,6 +16,12 @@ typeset -g ZSH_SAGE_API_BASE="${ZSH_SAGE_API_BASE:-https://api.anthropic.com}"
 typeset -g ZSH_SAGE_AI_MODEL="${ZSH_SAGE_AI_MODEL:-claude-haiku-4-5-20251001}"
 typeset -g ZSH_SAGE_MAX_CANDIDATES="${ZSH_SAGE_MAX_CANDIDATES:-10}"
 
+# Learn from your habits
+# When you accept a suggestion, zsh-sage remembers which signals helped
+# so it can personalize rankings over time. Local only, nothing leaves your machine.
+typeset -g ZSH_SAGE_COLLECT_ACCEPTS="${ZSH_SAGE_COLLECT_ACCEPTS:-true}"
+typeset -g ZSH_SAGE_ADAPTIVE_WEIGHTS="${ZSH_SAGE_ADAPTIVE_WEIGHTS:-false}"
+
 # ── Profile presets ──────────────────────────────────────────────────
 # Users set: export ZSH_SAGE_PROFILE="contextual" in .zshrc
 # Or override individual weights with ZSH_SAGE_W_* for fine-tuning.

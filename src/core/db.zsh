@@ -124,9 +124,22 @@ CREATE TABLE IF NOT EXISTS stats (
     PRIMARY KEY (command, directory)
 );
 
+-- Accepted suggestion log for adaptive weights
+-- Each row records which signals contributed to a correct prediction
+CREATE TABLE IF NOT EXISTS weight_accepts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       INTEGER NOT NULL,
+    freq_contrib    REAL DEFAULT 0,
+    recency_contrib REAL DEFAULT 0,
+    dir_contrib     REAL DEFAULT 0,
+    seq_contrib     REAL DEFAULT 0,
+    success_contrib REAL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_commands_prefix ON commands(command COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_commands_dir ON commands(directory);
 CREATE INDEX IF NOT EXISTS idx_stats_dir ON stats(directory);
+CREATE INDEX IF NOT EXISTS idx_weight_accepts_ts ON weight_accepts(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_stats_freq ON stats(frequency DESC);
 SQL
 
@@ -144,6 +157,15 @@ _sage_sql_escape() {
 }
 
 # ── CRUD operations ──────────────────────────────────────────────
+
+# Record an accepted suggestion with its signal breakdown
+# Args: freq_contrib recency_contrib dir_contrib seq_contrib success_contrib
+_sage_db_record_accept() {
+    local ts=$(date +%s)
+    _sage_db_exec "INSERT INTO weight_accepts
+(timestamp, freq_contrib, recency_contrib, dir_contrib, seq_contrib, success_contrib)
+VALUES (${ts}, ${1:-0}, ${2:-0}, ${3:-0}, ${4:-0}, ${5:-0});"
+}
 
 # Record a command execution
 _sage_db_record() {
