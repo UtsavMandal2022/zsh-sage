@@ -10,10 +10,6 @@ typeset -g ZSH_SAGE_DB="${ZSH_SAGE_DB:-$HOME/.zsh-sage/sage.db}"
 typeset -g ZSH_SAGE_HIGHLIGHT_STYLE="${ZSH_SAGE_HIGHLIGHT_STYLE:-fg=8}"
 typeset -g ZSH_SAGE_ACCEPT_KEY="${ZSH_SAGE_ACCEPT_KEY:-forward-char}"
 typeset -g ZSH_SAGE_AI_ENABLED="${ZSH_SAGE_AI_ENABLED:-false}"
-typeset -g ZSH_SAGE_AI_DEBOUNCE_MS="${ZSH_SAGE_AI_DEBOUNCE_MS:-300}"
-typeset -g ZSH_SAGE_API_KEY="${ZSH_SAGE_API_KEY:-}"
-typeset -g ZSH_SAGE_API_BASE="${ZSH_SAGE_API_BASE:-https://api.anthropic.com}"
-typeset -g ZSH_SAGE_AI_MODEL="${ZSH_SAGE_AI_MODEL:-claude-haiku-4-5-20251001}"
 typeset -g ZSH_SAGE_MAX_CANDIDATES="${ZSH_SAGE_MAX_CANDIDATES:-10}"
 
 # Number of suggestions to cycle through with Ctrl+Space
@@ -79,10 +75,8 @@ source "$ZSH_SAGE_DIR/src/core/widget.zsh"
 source "$ZSH_SAGE_DIR/src/strategies/local.zsh"
 source "$ZSH_SAGE_DIR/src/core/cli.zsh"
 
-# Source AI module only if enabled
-if [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]]; then
-    source "$ZSH_SAGE_DIR/src/ai/suggest.zsh"
-fi
+# hm command — always loaded, gated at runtime via ZSH_SAGE_AI_ENABLED
+source "$ZSH_SAGE_DIR/src/ai/helpme.zsh"
 
 # ── Initialize ───────────────────────────────────────────────────────
 _sage_init() {

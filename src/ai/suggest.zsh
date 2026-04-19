@@ -60,37 +60,12 @@ ${recent_cmds}
 
 Complete command:"
 
-    local response
-    response=$(curl -s --max-time 3 \
-        -H "Content-Type: application/json" \
-        -H "x-api-key: ${ZSH_SAGE_API_KEY}" \
-        -H "anthropic-version: 2023-06-01" \
-        -d "{
-            \"model\": \"${ZSH_SAGE_AI_MODEL}\",
-            \"max_tokens\": 100,
-            \"messages\": [{
-                \"role\": \"user\",
-                \"content\": $(printf '%s' "$prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
-            }]
-        }" \
-        "${ZSH_SAGE_API_BASE}/v1/messages" 2>/dev/null)
-
-    # Extract the text from the response
+    # Use shared provider abstraction
     local suggestion
-    suggestion=$(echo "$response" | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    text = data['content'][0]['text'].strip()
-    # Ensure suggestion starts with the prefix
-    if text.startswith('$prefix'):
-        print(text)
-except:
-    pass
-" 2>/dev/null)
+    suggestion=$(_sage_api_call "$prompt" 100 2>/dev/null)
 
-    # Write result to temp file for the widget to pick up
-    if [[ -n "$suggestion" ]]; then
+    # Ensure suggestion starts with the prefix
+    if [[ -n "$suggestion" && "$suggestion" == "$prefix"* ]]; then
         echo "$suggestion" > "$_SAGE_AI_TMPFILE"
     fi
 }

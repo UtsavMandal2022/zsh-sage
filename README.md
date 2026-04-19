@@ -48,6 +48,7 @@ Everything below works out of the box — no configuration needed.
 - **Failure penalty** — typos and broken commands get demoted
 - **Learns from you** — every accepted suggestion tunes the ranking over time
 - **Cycle through alternatives** — press Ctrl+N to browse ranked suggestions, confidence color updates with each one
+- **`hm` command** — ask AI for commands in plain English, powered by Claude Code
 - **AI fallback** — optional Anthropic Haiku for novel commands (BYOK)
 - **~9ms per keystroke** — SQLite coproc, single-query scoring, zero fork overhead
 
@@ -107,16 +108,43 @@ This seeds the database with your past commands. Sequence data (what follows wha
 
 **Most users don't need to configure anything.** zsh-sage adapts to your habits automatically — it shifts between frequency-heavy and recency-heavy ranking based on how much you've typed, learns which command follows which from your history, and scopes suggestions to the current directory. Just install it and use your shell normally.
 
-### AI suggestions (optional)
+### AI commands (`hm`)
 
-Enable AI-powered suggestions for commands not in your history. Uses Anthropic's Haiku model (BYOK) — fast and cheap (~$0.01/day for heavy usage).
+Ask for shell commands in plain English — or get a fix for your last failed command.
 
-```zsh
-export ZSH_SAGE_AI_ENABLED=true
-export ZSH_SAGE_API_KEY="sk-your-anthropic-key"
+```
+$ hm find files larger than 1GB
+
+  ┌────────────────────────────────────────────┐
+  │  find / -type f -size +1G 2>/dev/null      │
+  └────────────────────────────────────────────┘
+
+  Run it? [y/N/e(dit)]
 ```
 
-AI suggestions fire asynchronously only when the local scorer has no good match. The ghost text UX is identical — you won't know whether a suggestion came from history or AI. AI suggestions appear with medium confidence color.
+```
+$ git push origin main
+error: failed to push some refs...
+
+$ hm
+
+  Failed: git push origin main
+  Exit code: 1
+
+  ┌──────────────────────────────────────────────────────────────┐
+  │  git pull --rebase origin main && git push origin main       │
+  └──────────────────────────────────────────────────────────────┘
+
+  Run it? [y/N/e(dit)]
+```
+
+**Setup** — requires [Claude Code](https://claude.ai/claude-code) CLI installed:
+
+```zsh
+zsage ai    # one-time setup, explains what happens, asks permission
+```
+
+How it works: each `hm` call runs `claude -p` with your shell context (directory, git branch, recent commands). No sessions are saved — calls are ephemeral. Uses your existing Claude Code subscription.
 
 ### Advanced: manual tuning
 
@@ -167,6 +195,7 @@ Note: profile presets are being de-emphasized as the automatic behavior improves
 
 ```zsh
 zsage status     # Current config, DB stats, active weights (with visual bars)
+zsage ai         # Enable/disable AI commands (hm)
 zsage stats      # Your top commands by frequency
 zsage weights    # What zsh-sage has learned from your habits
 zsage profile    # View the profile presets (for advanced tuning)
@@ -176,13 +205,15 @@ zsage help       # Full usage info with color reference
 
 ## Keybindings
 
-| Key | Action |
+| Key / Command | Action |
 |---|---|
 | **Right arrow** | Accept full suggestion |
 | **Option+Right** / **Ctrl+Right** | Accept word-by-word |
 | **Ctrl+N** | Cycle through alternatives (up to 8 ranked suggestions) |
 | **Backspace** | Clear and re-suggest |
 | Any typing | New suggestion appears as ghost text |
+| `hm <question>` | Ask AI for a command |
+| `hm` | AI suggests a fix for your last failed command |
 
 ## Scoring signals explained
 
@@ -251,8 +282,9 @@ The first three versions were pure **optimizations** — same behavior, faster. 
 
 - `zsh` 5.0+
 - `sqlite3` (pre-installed on macOS and most Linux)
-- `python3` (only for AI mode JSON handling)
+- `python3` (only for AI mode formatting)
 - `bc` (for scoring math in tests, not used in hot path)
+- [Claude Code](https://claude.ai/claude-code) CLI (optional, for `hm` command)
 
 ## Uninstall
 

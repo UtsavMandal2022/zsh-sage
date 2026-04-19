@@ -124,6 +124,18 @@ _sage_rank_candidates() {
     local e_dir="$(_sage_sql_escape "$dir")"
     local e_prev="$(_sage_sql_escape "$prev_cmd")"
 
+    # Extract first 2 words of prev_command for fuzzy sequence matching
+    # "git commit -m 'fix'" → "git commit" so all commit variants match
+    local prev_group="${prev_cmd%% *}"
+    if [[ "$prev_cmd" == *" "* ]]; then
+        local rest="${prev_cmd#* }"
+        prev_group="${prev_group} ${rest%% *}"
+    fi
+    local e_prev_group="$(_sage_sql_escape "$prev_group")"
+    local like_prev_group="${e_prev_group//\$/\$\$}"
+    like_prev_group="${like_prev_group//\%/\$%}"
+    like_prev_group="${like_prev_group//_/\$_}"
+
     local like_prefix="${e_prefix//\$/\$\$}"
     like_prefix="${like_prefix//\%/\$%}"
     like_prefix="${like_prefix//_/\$_}"
@@ -166,12 +178,12 @@ seq_stats AS (
     SELECT
         command,
         CAST(COUNT(*) AS REAL) / MAX(
-            (SELECT COUNT(*) FROM commands WHERE prev_command = '${e_prev}'
+            (SELECT COUNT(*) FROM commands WHERE prev_command LIKE '${like_prev_group}%' ESCAPE '$'
              AND command LIKE '${like_prefix}%' ESCAPE '$'), 1
         ) as seq_score
     FROM commands
     WHERE LENGTH('${e_prev}') > 0
-      AND prev_command = '${e_prev}'
+      AND prev_command LIKE '${like_prev_group}%' ESCAPE '$'
       AND command LIKE '${like_prefix}%' ESCAPE '$'
     GROUP BY command
 )
@@ -229,6 +241,17 @@ _sage_rank_with_score() {
     local e_dir="$(_sage_sql_escape "$dir")"
     local e_prev="$(_sage_sql_escape "$prev_cmd")"
 
+    # Extract first 2 words of prev_command for fuzzy sequence matching
+    local prev_group="${prev_cmd%% *}"
+    if [[ "$prev_cmd" == *" "* ]]; then
+        local rest="${prev_cmd#* }"
+        prev_group="${prev_group} ${rest%% *}"
+    fi
+    local e_prev_group="$(_sage_sql_escape "$prev_group")"
+    local like_prev_group="${e_prev_group//\$/\$\$}"
+    like_prev_group="${like_prev_group//\%/\$%}"
+    like_prev_group="${like_prev_group//_/\$_}"
+
     local like_prefix="${e_prefix//\$/\$\$}"
     like_prefix="${like_prefix//\%/\$%}"
     like_prefix="${like_prefix//_/\$_}"
@@ -271,12 +294,12 @@ seq_stats AS (
     SELECT
         command,
         CAST(COUNT(*) AS REAL) / MAX(
-            (SELECT COUNT(*) FROM commands WHERE prev_command = '${e_prev}'
+            (SELECT COUNT(*) FROM commands WHERE prev_command LIKE '${like_prev_group}%' ESCAPE '\$'
              AND command LIKE '${like_prefix}%' ESCAPE '\$'), 1
         ) as seq_score
     FROM commands
     WHERE LENGTH('${e_prev}') > 0
-      AND prev_command = '${e_prev}'
+      AND prev_command LIKE '${like_prev_group}%' ESCAPE '\$'
       AND command LIKE '${like_prefix}%' ESCAPE '\$'
     GROUP BY command
 )

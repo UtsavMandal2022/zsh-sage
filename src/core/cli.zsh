@@ -44,6 +44,9 @@ zsage() {
         status)
             _sage_cli_status
             ;;
+        ai)
+            _sage_cli_ai
+            ;;
         profile)
             _sage_cli_profile "$2"
             ;;
@@ -79,6 +82,7 @@ ${b}USAGE${r}
 
 ${b}COMMANDS${r}
   ${c}status${r}     Show current configuration and DB stats
+  ${c}ai${r}         Enable/disable AI commands (hm)
   ${c}profile${r}    Show available profiles and current weights
   ${c}stats${r}      Show your most frequent commands
   ${c}weights${r}    Show what zsh-sage has learned from your habits
@@ -88,8 +92,11 @@ ${b}COMMANDS${r}
 ${b}CONFIGURATION${r} ${d}(add to ~/.zshrc)${r}
   ${y}export${r} ZSH_SAGE_PROFILE=${g}"default"${r}      ${d}# default | contextual | recent${r}
   ${y}export${r} ZSH_SAGE_W_FREQUENCY=${g}"0.30"${r}     ${d}# Override individual weights${r}
-  ${y}export${r} ZSH_SAGE_AI_ENABLED=${g}true${r}        ${d}# Enable AI suggestions${r}
-  ${y}export${r} ZSH_SAGE_API_KEY=${g}"sk-..."${r}       ${d}# Anthropic API key for AI mode${r}
+  ${y}export${r} ZSH_SAGE_AI_ENABLED=${g}true${r}        ${d}# Enable AI ghost-text suggestions${r}
+
+${b}AI COMMANDS${r} ${d}(requires Claude Code: npm i -g @anthropic-ai/claude-code)${r}
+  ${c}hm${r} ${d}<question>${r}  Ask AI for a command ${d}(e.g. hm find large files)${r}
+  ${c}hm${r}              Suggest a fix for your last failed command
 
 ${b}KEYBINDINGS${r}
   ${c}right arrow${r}     Accept full suggestion
@@ -308,6 +315,91 @@ FROM (SELECT * FROM weight_accepts ORDER BY timestamp DESC LIMIT 500);")
     echo "${d}───────────────────────────────────────────${r}"
     echo "${d}  Run ${c}zsage weights reset${d} to forget everything${r}"
     echo ""
+}
+
+_sage_cli_ai() {
+    local g r c y d b
+    _sage_color g green; _sage_color r reset; _sage_color c cyan
+    _sage_color y yellow; _sage_color d dim; _sage_color b bold
+
+    echo ""
+
+    # Already enabled
+    if [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]]; then
+        echo "  ${b}AI is enabled${r} ${g}●${r}"
+        echo ""
+        echo "  ${d}Provider:${r} Claude Code CLI"
+        echo "  ${d}Usage:${r}    ${c}hm${r} <question>  or  ${c}hm${r} to fix last failed command"
+        echo ""
+        echo -n "  ${b}Disable AI?${r} ${d}[y/N]${r} "
+        local reply=""
+        read -s -k 1 reply
+        echo ""
+        if [[ "$reply" == "y" || "$reply" == "Y" ]]; then
+            _sage_ai_set_enabled false
+            echo "  ${d}AI disabled. Run${r} ${c}zsage ai${r} ${d}to re-enable.${r}"
+        fi
+        echo ""
+        return 0
+    fi
+
+    # Not enabled — explain and offer to enable
+    echo "  ${b}AI Commands${r} ${d}(currently disabled)${r}"
+    echo ""
+    echo "  ${c}hm${r} lets you ask for shell commands in plain English:"
+    echo ""
+    echo "    ${c}hm${r} find files larger than 1GB"
+    echo "    ${c}hm${r} compress this folder as tar.gz"
+    echo "    ${c}hm${r}   ${d}← fixes your last failed command${r}"
+    echo ""
+    echo "  ${b}How it works:${r}"
+    echo "  Uses your locally installed ${c}Claude Code${r} CLI (${c}claude -p${r})."
+    echo "  Each ${c}hm${r} call makes one API request against your Claude"
+    echo "  Code subscription. No sessions are saved — calls are ephemeral."
+    echo ""
+
+    # Check if Claude Code is installed
+    if ! command -v claude &>/dev/null; then
+        echo "  ${y}Claude Code is not installed.${r}"
+        echo "  Install it first: ${c}npm install -g @anthropic-ai/claude-code${r}"
+        echo ""
+        return 1
+    fi
+
+    local claude_ver
+    claude_ver=$(claude --version 2>/dev/null | head -1)
+    echo "  ${g}Claude Code detected${r} ${d}(${claude_ver})${r}"
+    echo ""
+    echo -n "  ${b}Enable AI?${r} ${d}[Y/n]${r} "
+    local reply=""
+    read -s -k 1 reply
+    echo ""
+
+    if [[ "$reply" == "n" || "$reply" == "N" ]]; then
+        echo "  ${d}Cancelled. Run${r} ${c}zsage ai${r} ${d}anytime to enable.${r}"
+        echo ""
+        return 0
+    fi
+
+    _sage_ai_set_enabled true
+    export ZSH_SAGE_AI_ENABLED=true
+
+    echo ""
+    echo "  ${g}AI enabled!${r}"
+    echo "  ${d}Try:${r} ${c}hm${r} find files larger than 1GB"
+    echo ""
+}
+
+# Write ZSH_SAGE_AI_ENABLED to ~/.zshrc
+_sage_ai_set_enabled() {
+    local enabled="$1"
+    local zshrc="$HOME/.zshrc"
+
+    if grep -q "^export ZSH_SAGE_AI_ENABLED=" "$zshrc" 2>/dev/null; then
+        sed -i '' "s/^export ZSH_SAGE_AI_ENABLED=.*/export ZSH_SAGE_AI_ENABLED=${enabled}/" "$zshrc"
+    else
+        echo "\nexport ZSH_SAGE_AI_ENABLED=${enabled}" >> "$zshrc"
+    fi
 }
 
 _sage_cli_credits() {
