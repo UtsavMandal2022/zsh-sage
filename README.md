@@ -33,7 +33,7 @@ Suggestion: git commit -m 'update'
             ~~~~~~~~~~~~~~~~~~~~~~  (sage green = high confidence)
 ```
 
-Press **right arrow** to accept, **Ctrl+Right** to accept word-by-word.
+Press **right arrow** to accept, **Ctrl+Right** to accept word-by-word, **Ctrl+N** to cycle through alternatives.
 
 ## Features
 
@@ -47,6 +47,7 @@ Everything below works out of the box — no configuration needed.
 - **Exponential recency decay** — smooth fade with a 3-day half-life, no cliffs
 - **Failure penalty** — typos and broken commands get demoted
 - **Learns from you** — every accepted suggestion tunes the ranking over time
+- **Cycle through alternatives** — press Ctrl+N to browse ranked suggestions, confidence color updates with each one
 - **AI fallback** — optional Anthropic Haiku for novel commands (BYOK)
 - **~9ms per keystroke** — SQLite coproc, single-query scoring, zero fork overhead
 
@@ -150,6 +151,7 @@ Other knobs:
 ```zsh
 export ZSH_SAGE_RECENCY_HALFLIFE=259200         # 3 days (in seconds)
 export ZSH_SAGE_PREFIX_AWARE_WEIGHTS=true       # set false on very slow hardware
+export ZSH_SAGE_CYCLE_COUNT=8                   # alternatives shown on Ctrl+N
 export ZSH_SAGE_COLOR_HIGH=108                  # high confidence color (256-color)
 export ZSH_SAGE_COLOR_MED=245                   # medium
 export ZSH_SAGE_COLOR_LOW=240                   # low
@@ -177,7 +179,8 @@ zsage help       # Full usage info with color reference
 | Key | Action |
 |---|---|
 | **Right arrow** | Accept full suggestion |
-| **Ctrl+Right** | Accept word-by-word |
+| **Option+Right** / **Ctrl+Right** | Accept word-by-word |
+| **Ctrl+N** | Cycle through alternatives (up to 8 ranked suggestions) |
 | **Backspace** | Clear and re-suggest |
 | Any typing | New suggestion appears as ghost text |
 
@@ -214,7 +217,7 @@ Keystroke
   → Single SQL query scores all candidates via coproc
   → Confidence color computed from score
   → Best match shown as colored POSTDISPLAY
-  → Right arrow to accept
+  → Right arrow to accept, Ctrl+N to cycle alternatives
 
 SQLite coproc stays alive for the session (~1MB RAM, 0% idle CPU).
 No fork per keystroke — queries pipe through stdin/stdout.

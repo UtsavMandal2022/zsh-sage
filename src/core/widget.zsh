@@ -329,6 +329,7 @@ _sage_widget_init() {
     bindkey '^[[C' sage-accept          # Right arrow
     bindkey '^[OC' sage-accept          # Right arrow (alternate)
     bindkey '^[[1;5C' sage-accept-word  # Ctrl+Right
+    bindkey '^[[1;3C' sage-accept-word  # Option+Right (macOS)
     bindkey '^M' sage-accept-line       # Enter
     bindkey '^N' sage-cycle              # Ctrl+N (next suggestion)
 
