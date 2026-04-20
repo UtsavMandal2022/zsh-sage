@@ -22,13 +22,7 @@ if ! command -v sqlite3 &>/dev/null; then
     exit 1
 fi
 
-if ! command -v python3 &>/dev/null; then
-    echo "ERROR: python3 is required (for AI features JSON handling)."
-    exit 1
-fi
-
 echo "  sqlite3 ✓"
-echo "  python3 ✓"
 echo ""
 
 # Create data directory
@@ -68,8 +62,7 @@ fi
 echo ""
 echo "=== Installation complete ==="
 echo ""
-echo "Optional: Enable AI suggestions by adding to ~/.zshrc:"
-echo '  export ZSH_SAGE_AI_ENABLED=true'
-echo '  export ZSH_SAGE_API_KEY="sk-your-anthropic-key"'
+echo "Optional: Enable AI commands (requires Claude Code CLI):"
+echo '  zsage ai'
 echo ""
 echo "Restart your shell or run: source ~/.zshrc"
