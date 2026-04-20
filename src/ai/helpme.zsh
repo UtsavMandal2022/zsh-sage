@@ -45,7 +45,7 @@ _sage_helpme_ask() {
     local context
     context=$(_sage_helpme_context)
 
-    local prompt="You are a shell command expert. Given the context below, suggest the best shell command to accomplish the user's goal. Return ONLY the command — no explanation, no markdown, no quotes around it. If the input is not a command request (e.g. casual conversation, questions about life, etc.), respond with exactly: NO_COMMAND
+    local prompt="You are a shell command expert. Given the context below, suggest the best shell command to accomplish the user's goal. Return ONLY the command — no explanation, no markdown, no quotes around it. Only if the input is completely unrelated to computers, shells, or commands (e.g. 'I love you', 'what is the meaning of life', 'tell me a joke'), respond with exactly: NO_COMMAND — otherwise always suggest a command.
 
 ${context}
 
@@ -221,15 +221,61 @@ _sage_helpme_display() {
         b=$'\033[1m'
     fi
 
-    # Build the box
-    local cmd_len=${#cmd}
-    local pad_len=$((cmd_len + 4))
-    (( pad_len < 40 )) && pad_len=40
-    local border=$(printf '%*s' "$pad_len" '' | tr ' ' '─')
+    # Build the box — wrap long commands
+    local max_width=70
+    local -a lines=()
+
+    if (( ${#cmd} <= max_width )); then
+        lines=("$cmd")
+    else
+        local remaining="$cmd"
+        local chunk break_at op_pos op last_space i
+        while (( ${#remaining} > max_width )); do
+            chunk="${remaining:0:$max_width}"
+            break_at=$max_width
+
+            # Prefer breaking after && or || or |
+            for op in '&&' '||' '|'; do
+                op_pos="${chunk[(I)$op]}"
+                if (( op_pos > 0 && op_pos < max_width )); then
+                    break_at=$((op_pos + ${#op} - 1))
+                fi
+            done
+
+            # Otherwise break at last space
+            if (( break_at == max_width )); then
+                last_space=0
+                for (( i=max_width; i>0; i-- )); do
+                    if [[ "${remaining[$i]}" == " " ]]; then
+                        last_space=$i
+                        break
+                    fi
+                done
+                (( last_space > 0 )) && break_at=$last_space
+            fi
+
+            lines+=("${remaining:0:$break_at}")
+            remaining="${remaining:$break_at}"
+            remaining="${remaining# }"
+        done
+        [[ -n "$remaining" ]] && lines+=("$remaining")
+    fi
+
+    # Box width = widest line + 4 padding
+    local box_width=0
+    local line
+    for line in "${lines[@]}"; do
+        (( ${#line} + 4 > box_width )) && box_width=$((${#line} + 4))
+    done
+    (( box_width < 40 )) && box_width=40
+
+    local border=$(printf '%*s' "$box_width" '' | tr ' ' '─')
 
     echo ""
     echo "  ${d}┌${border}┐${r}"
-    printf "  ${d}│${r}  ${b}${g}%s${r}%*s${d}│${r}\n" "$cmd" "$((pad_len - cmd_len - 2))" ""
+    for line in "${lines[@]}"; do
+        printf "  ${d}│${r}  ${b}${g}%s${r}%*s${d}│${r}\n" "$line" "$((box_width - ${#line} - 2))" ""
+    done
     echo "  ${d}└${border}┘${r}"
     echo ""
 
@@ -245,11 +291,6 @@ _sage_helpme_display() {
             echo "  ${d}>${r} ${cmd}"
             echo ""
             eval "${cmd}"
-            local cmd_exit=$?
-            # Log to DB so it builds autosuggestion data
-            {
-                _sage_db_record "$cmd" "$PWD" "" "$cmd_exit" "$(date +%s)" ""
-            } &!
             ;;
         e|E)
             print -z "${cmd}"
