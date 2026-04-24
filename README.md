@@ -19,7 +19,7 @@ Intelligent zsh autosuggestions that learn from your habits — powered by multi
 
 <div align="center">
 
-https://github.com/user-attachments/assets/aa039fdf-dd2b-49b7-851e-8f322cdd54a3
+https://github.com/user-attachments/assets/eb62c3d8-219a-43a7-98bb-99f16de6749f
 
 </div>
 
