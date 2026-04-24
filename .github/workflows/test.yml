@@ -30,16 +30,16 @@ jobs:
           echo "bc: $(echo '1+1' | bc)"
 
       - name: Run DB tests
-        run: zsh tests/test_db.sh
+        run: ZSH_SAGE_NO_COPROC=1 zsh tests/test_db.sh
 
       - name: Run Scorer tests
-        run: zsh tests/test_scorer.sh
+        run: ZSH_SAGE_NO_COPROC=1 zsh tests/test_scorer.sh
 
       - name: Run Weight Tuning tests
-        run: zsh tests/test_weight_tuning.sh
+        run: ZSH_SAGE_NO_COPROC=1 zsh tests/test_weight_tuning.sh
 
       - name: Run Scenario tests
-        run: zsh tests/test_scenarios.sh
+        run: ZSH_SAGE_NO_COPROC=1 zsh tests/test_scenarios.sh
 
       - name: Run Performance benchmarks
-        run: zsh tests/test_performance.sh
+        run: ZSH_SAGE_NO_COPROC=1 zsh tests/test_performance.sh

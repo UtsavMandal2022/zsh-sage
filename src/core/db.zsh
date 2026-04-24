@@ -98,11 +98,13 @@ _sage_db_query_raw() {
 
 # Execute a query and return results (convenience wrapper)
 # Falls back to fork if coproc is unavailable (e.g. non-interactive CI)
+# Set ZSH_SAGE_NO_COPROC=1 to force fork mode (useful for testing/CI)
 _sage_db_query() {
-    if (( _SAGE_COPROC_ALIVE )); then
+    if (( ${ZSH_SAGE_NO_COPROC:-0} )); then
+        _sage_db_fork "$1"
+    elif (( _SAGE_COPROC_ALIVE )); then
         _sage_db_query_raw "$1"
     else
-        # Try to start coproc; if it fails, use fork fallback
         _sage_coproc_start 2>/dev/null
         if (( _SAGE_COPROC_ALIVE )); then
             _sage_db_query_raw "$1"
