@@ -18,6 +18,18 @@ _sage_coproc_start() {
     fi
 
     coproc sqlite3 -separator '|' -cmd ".mode list" "$ZSH_SAGE_DB" 2>/dev/null
+
+    # Verify the coproc actually started
+    if ! print -p "SELECT 1;" 2>/dev/null; then
+        _SAGE_COPROC_ALIVE=0
+        return 1
+    fi
+    print -p ".print ${_SAGE_EOF_SENTINEL}" 2>/dev/null
+    local line
+    while IFS= read -p -t 2 line 2>/dev/null; do
+        [[ "$line" == *"${_SAGE_EOF_SENTINEL}"* ]] && break
+    done
+
     _SAGE_COPROC_ALIVE=1
 
     # Enable WAL mode for better concurrent access (multiple tabs)
@@ -85,18 +97,29 @@ _sage_db_query_raw() {
 }
 
 # Execute a query and return results (convenience wrapper)
+# Falls back to fork if coproc is unavailable (e.g. non-interactive CI)
 _sage_db_query() {
-    _sage_db_query_raw "$1"
+    if (( _SAGE_COPROC_ALIVE )); then
+        _sage_db_query_raw "$1"
+    else
+        # Try to start coproc; if it fails, use fork fallback
+        _sage_coproc_start 2>/dev/null
+        if (( _SAGE_COPROC_ALIVE )); then
+            _sage_db_query_raw "$1"
+        else
+            _sage_db_fork "$1"
+        fi
+    fi
 }
 
 # Execute a write query (no output expected)
 _sage_db_exec() {
-    _sage_db_query_raw "$1" > /dev/null 2>&1
+    _sage_db_query "$1" > /dev/null 2>&1
 }
 
 # Fallback: run via sqlite3 fork (for init and import where coproc isn't ready)
 _sage_db_fork() {
-    printf '%s' "$1" | sqlite3 "$ZSH_SAGE_DB"
+    printf '%s' "$1" | sqlite3 -separator '|' "$ZSH_SAGE_DB"
 }
 
 # ── Database initialization ──────────────────────────────────────
