@@ -2,7 +2,7 @@
 # CLI — user-facing `zsage` command for status, profile info, and tuning
 #
 
-typeset -g _SAGE_VERSION="0.6.0"
+typeset -g _SAGE_VERSION="0.7.0"
 
 # Colors (respects NO_COLOR env var)
 _sage_color() {
