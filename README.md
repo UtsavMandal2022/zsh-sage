@@ -19,8 +19,6 @@ Intelligent zsh autosuggestions that learn from your habits — powered by multi
 
 <div align="center">
 
-### See it in action
-
 https://github.com/user-attachments/assets/aa039fdf-dd2b-49b7-851e-8f322cdd54a3
 
 </div>
