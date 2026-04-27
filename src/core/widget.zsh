@@ -74,7 +74,7 @@ _sage_clear_state() {
 # ── Highlight management ─────────────────────────────────────────
 # Remove previous sage highlight without touching other highlights
 _sage_highlight_reset() {
-    if [[ -n "$_SAGE_LAST_HIGHLIGHT" ]]; then
+    if [[ -n "${_SAGE_LAST_HIGHLIGHT:-}" ]]; then
         region_highlight=("${(@)region_highlight:#$_SAGE_LAST_HIGHLIGHT}")
         unset _SAGE_LAST_HIGHLIGHT
     fi
