@@ -74,7 +74,7 @@ _sage_clear_state() {
 # ── Highlight management ─────────────────────────────────────────
 # Remove previous sage highlight without touching other highlights
 _sage_highlight_reset() {
-    if [[ -n "$_SAGE_LAST_HIGHLIGHT" ]]; then
+    if [[ -n "${_SAGE_LAST_HIGHLIGHT:-}" ]]; then
         region_highlight=("${(@)region_highlight:#$_SAGE_LAST_HIGHLIGHT}")
         unset _SAGE_LAST_HIGHLIGHT
     fi
@@ -98,7 +98,7 @@ _sage_suggest_widget() {
     local -i KEYS_QUEUED_COUNT
 
     _sage_highlight_reset
-    zle .self-insert
+    _sage_invoke_wrapped_widget self-insert
 
     # Skip suggestion if more keys are buffered (paste or fast typing)
     if (( PENDING > 0 || KEYS_QUEUED_COUNT > 0 )); then
@@ -184,7 +184,7 @@ _sage_accept_widget() {
         _sage_clear_state
         zle -R
     else
-        zle .forward-char
+        _sage_invoke_wrapped_widget forward-char
     fi
 }
 
@@ -209,7 +209,7 @@ _sage_accept_word_widget() {
         fi
         zle -R
     else
-        zle .forward-word
+        _sage_invoke_wrapped_widget forward-word
     fi
 }
 
@@ -228,7 +228,7 @@ _sage_accept_line_widget() {
     _sage_highlight_reset
     POSTDISPLAY=""
     _SAGE_CURRENT_SUGGESTION=""
-    zle .accept-line
+    _sage_invoke_wrapped_widget accept-line
 }
 
 # ── Cycle through alternatives (Ctrl+Space) ─────────────────────
@@ -305,44 +305,79 @@ _sage_complete_widget() {
     POSTDISPLAY=""
 
     # Call the original expand-or-complete (saved before we override)
-    zle _sage_orig_complete
+    _sage_invoke_wrapped_widget expand-or-complete
 
     # Re-suggest based on the now-completed buffer
     _sage_update_suggestion
     zle -R
 }
 
+# ── This function wraps the bracketed-paste widget, which is called
+# when text is pasted into the buffer, and updates the suggestion.
+_sage_bracketed_paste() {
+    emulate -L zsh
+    _sage_highlight_reset
+    _sage_invoke_wrapped_widget bracketed-paste
+    _sage_update_suggestion
+    zle -R
+}
+
+# ── Register a function as a wrapper for an existing widget
+_sage_register_widget_wrapper() {
+    emulate -L zsh
+    local wrapper_function="$1"
+    local wrapped_widget="$2"
+    local wrapped_widget_alias="_sage_orig_$wrapped_widget"
+    if (( ! ${+widgets[$wrapped_widget_alias]} )); then
+        zle -A "$wrapped_widget" "$wrapped_widget_alias"
+    fi
+    zle -N "$wrapped_widget" "$wrapper_function"
+}
+
+# ── wrapper functions registered using _sage_register_widget_wrapper can
+# use this function to invoke the widget they are wrapping
+_sage_invoke_wrapped_widget() {
+    emulate -L zsh
+    setopt local_options no_unset
+    local wrapped_widget="$1"
+    local wrapped_widget_alias="_sage_orig_$wrapped_widget"
+    zle "$wrapped_widget_alias"
+}
+
 # ── Register widgets and keybindings ─────────────────────────────
 _sage_widget_init() {
-    zle -N sage-suggest _sage_suggest_widget
-    zle -N sage-accept _sage_accept_widget
-    zle -N sage-accept-word _sage_accept_word_widget
+    _sage_register_widget_wrapper _sage_accept_widget forward-char
+    _sage_register_widget_wrapper _sage_accept_word_widget forward-word
     zle -N sage-dismiss _sage_dismiss_widget
-    zle -N sage-accept-line _sage_accept_line_widget
+    _sage_register_widget_wrapper _sage_accept_line_widget accept-line
+    _sage_register_widget_wrapper _sage_suggest_widget self-insert
+
+    _sage_register_widget_wrapper _sage_complete_widget expand-or-complete
+
     zle -N sage-cycle _sage_cycle_widget
-    zle -N self-insert _sage_suggest_widget
+    bindkey '^N' sage-cycle             # Ctrl+N (next suggestion)
 
-    # Save the original tab completion widget, then override
-    zle -A expand-or-complete _sage_orig_complete
-    zle -N expand-or-complete _sage_complete_widget
-
-    bindkey '^[[C' sage-accept          # Right arrow
-    bindkey '^[OC' sage-accept          # Right arrow (alternate)
-    bindkey '^[[1;5C' sage-accept-word  # Ctrl+Right
-    bindkey '^[[1;3C' sage-accept-word  # Option+Right (macOS)
-    bindkey '^M' sage-accept-line       # Enter
-    bindkey '^N' sage-cycle              # Ctrl+N (next suggestion)
-
-    zle -N sage-backspace _sage_backspace_widget
-    bindkey '^?' sage-backspace         # Backspace
-    bindkey '^H' sage-backspace         # Ctrl+H
+    _sage_register_widget_wrapper _sage_backward_kill_word backward-kill-word
+    _sage_register_widget_wrapper _sage_backward_delete_char backward-delete-char
+    _sage_register_widget_wrapper _sage_bracketed_paste bracketed-paste
 }
 
 # ── Backspace handler ────────────────────────────────────────────
-_sage_backspace_widget() {
+_sage_backward_kill_word() {
     emulate -L zsh
     _sage_highlight_reset
-    zle .backward-delete-char
+    _sage_invoke_wrapped_widget backward-kill-word
+    # skip suggestion if more inputs are pending, e.g. if backspace is held down
+    (( PENDING > 0 )) && return
+    _sage_update_suggestion
+    zle -R
+}
+_sage_backward_delete_char() {
+    emulate -L zsh
+    _sage_highlight_reset
+    _sage_invoke_wrapped_widget backward-delete-char
+    # skip suggestion if more inputs are pending, e.g. if backspace is held down
+    (( PENDING > 0 )) && return
     _sage_update_suggestion
     zle -R
 }
