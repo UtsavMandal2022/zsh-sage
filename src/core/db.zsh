@@ -178,6 +178,7 @@ CREATE TABLE IF NOT EXISTS weight_accepts (
 
 CREATE INDEX IF NOT EXISTS idx_commands_prefix ON commands(command COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_commands_dir ON commands(directory);
+CREATE INDEX IF NOT EXISTS idx_commands_prev ON commands(prev_command);
 CREATE INDEX IF NOT EXISTS idx_stats_dir ON stats(directory);
 CREATE INDEX IF NOT EXISTS idx_weight_accepts_ts ON weight_accepts(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_stats_freq ON stats(frequency DESC);
