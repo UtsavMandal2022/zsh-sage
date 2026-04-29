@@ -221,6 +221,14 @@ zsage help       # Full usage info with color reference
 | `hm <question>` | Ask AI for a command |
 | `hm` | AI suggests a fix for your last failed command |
 
+### Optional opt-in bindings
+
+zsh-sage exposes `sage-dismiss` as a user-bindable widget that clears the current ghost text without inserting anything. It ships unbound — pick a key that doesn't conflict with your setup:
+
+```zsh
+bindkey '^G' sage-dismiss    # Ctrl+G
+```
+
 ## Scoring signals explained
 
 **Frequency** — How many times you've run a command. Sqrt-scaled to prevent a single heavily-used command from dominating everything.
