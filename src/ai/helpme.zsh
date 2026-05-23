@@ -147,7 +147,7 @@ _sage_helpme_fix() {
     local context
     context=$(_sage_helpme_context)
 
-    local prompt="You are a shell command expert. The user's last command failed. Analyze the error and suggest the corrected command. Return ONLY the corrected command — no explanation, no markdown, no quotes around it.
+    local prompt="You are a shell command expert. The user's last command failed. Analyze the error and suggest the corrected command. Return ONLY the corrected command — no explanation, no markdown, no quotes around it, do not split command across lines.
 
 ${context}
 
@@ -283,7 +283,8 @@ _sage_helpme_display() {
     fi
 
     # Build the box — wrap long commands
-    local max_width=70
+    local term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
+    local max_width=$(( term_width - 10 ))
     local -a lines=()
 
     if (( ${#cmd} <= max_width )); then
