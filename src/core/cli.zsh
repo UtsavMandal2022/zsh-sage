@@ -90,9 +90,10 @@ ${b}COMMANDS${r}
   ${c}help${r}       Show this help
 
 ${b}CONFIGURATION${r} ${d}(add to ~/.zshrc)${r}
-  ${y}export${r} ZSH_SAGE_PROFILE=${g}"default"${r}      ${d}# default | contextual | recent${r}
-  ${y}export${r} ZSH_SAGE_W_FREQUENCY=${g}"0.30"${r}     ${d}# Override individual weights${r}
-  ${y}export${r} ZSH_SAGE_AI_ENABLED=${g}true${r}        ${d}# Enable AI ghost-text suggestions${r}
+  ${y}export${r} ZSH_SAGE_PROFILE=${g}"default"${r}                  ${d}# default | contextual | recent${r}
+  ${y}export${r} ZSH_SAGE_W_FREQUENCY=${g}"0.30"${r}                 ${d}# Override individual weights${r}
+  ${y}export${r} ZSH_SAGE_AI_ENABLED=${g}[auto|claude|ollama]${r}    ${d}# Enable AI ghost-text suggestions${r}
+  ${y}export${r} ZSH_SAGE_OLLAMA_MODEL=${g}"gemma4:e4b"${r}          ${d}# Select specific Ollama model${r}
 
 ${b}AI COMMANDS${r} ${d}(requires Claude Code: npm i -g @anthropic-ai/claude-code)${r}
   ${c}hm${r} ${d}<question>${r}  Ask AI for a command ${d}(e.g. hm find large files)${r}
@@ -132,6 +133,22 @@ _sage_cli_status() {
     stat_count=$(_sage_db_query "SELECT COUNT(*) FROM stats;")
     db_size=$(du -h "$ZSH_SAGE_DB" 2>/dev/null | cut -f1)
 
+    local ai_text
+    case "$ZSH_SAGE_AI_ENABLED" in
+        true|auto)
+            ai_text="${g}yes - auto detect${r}"
+            ;;
+        clause)
+            ai_text="${g}yes (claude)${r}"
+            ;;
+        ollama)
+            ai_text="${g}yes (ollama)${r}"
+            ;;
+        *)
+            ai_text="${d}no${r}"
+            ;;
+    esac
+
     _sage_banner
     cat <<EOF
 
@@ -140,7 +157,7 @@ ${b}STATUS${r}
   ${d}Database${r}        $ZSH_SAGE_DB ${d}($db_size)${r}
   ${d}Commands logged${r} ${c}${cmd_count:-0}${r}
   ${d}Unique commands${r} ${c}${stat_count:-0}${r}
-  ${d}AI enabled${r}      $(if [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]]; then echo "${g}yes${r}"; else echo "${d}no${r}"; fi)
+  ${d}AI enabled${r}      ${ai_text}
 
 ${b}WEIGHTS${r}
   ${m}frequency${r}  $ZSH_SAGE_W_FREQUENCY  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_FREQUENCY * 20 / 1" | bc)))")${r}
@@ -317,6 +334,23 @@ FROM (SELECT * FROM weight_accepts ORDER BY timestamp DESC LIMIT 500);")
     echo ""
 }
 
+_sage_cli_ai_ask_disable() {
+    echo ""
+    echo -n "  ${b}Disable AI?${r} ${d}[y/N]${r} "
+    local reply=""
+    read -s -k 1 reply
+    echo ""
+    if [[ "$reply" == "y" || "$reply" == "Y" ]]; then
+        _sage_ai_set_enabled false
+        export ZSH_SAGE_AI_ENABLED=false
+        # Restore the stub in the current shell so `hm` reflects disabled state immediately.
+        hm() { echo "AI commands are not enabled. Run 'zsage ai' to set up."; }
+        alias helpme=hm
+        echo "  ${d}AI disabled. Run${r} ${c}zsage ai${r} ${d}to re-enable.${r}"
+    fi
+    echo ""
+}
+
 _sage_cli_ai() {
     local g r c y d b
     _sage_color g green; _sage_color r reset; _sage_color c cyan
@@ -325,27 +359,34 @@ _sage_cli_ai() {
     echo ""
 
     # Already enabled
-    if [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]]; then
+    case "$ZSH_SAGE_AI_ENABLED" in
+        true|auto)
         echo "  ${b}AI is enabled${r} ${g}●${r}"
-        echo ""
-        echo "  ${d}Provider:${r} Claude Code CLI"
-        echo "  ${d}Usage:${r}    ${c}hm${r} <question>  or  ${c}hm${r} to fix last failed command"
-        echo ""
-        echo -n "  ${b}Disable AI?${r} ${d}[y/N]${r} "
-        local reply=""
-        read -s -k 1 reply
-        echo ""
-        if [[ "$reply" == "y" || "$reply" == "Y" ]]; then
-            _sage_ai_set_enabled false
-            export ZSH_SAGE_AI_ENABLED=false
-            # Restore the stub in the current shell so `hm` reflects disabled state immediately.
-            hm() { echo "AI commands are not enabled. Run 'zsage ai' to set up."; }
-            alias helpme=hm
-            echo "  ${d}AI disabled. Run${r} ${c}zsage ai${r} ${d}to re-enable.${r}"
-        fi
-        echo ""
-        return 0
-    fi
+            echo ""
+            echo "  ${d}Provider:${r} Auto detect"
+            echo "  ${d}Usage:${r}    ${c}hm${r} <question>  or  ${c}hm${r} to fix last failed command"
+            _sage_cli_ai_ask_disable
+            return 0
+            ;;
+        claude)
+            echo "  ${b}AI is enabled${r} ${g}●${r}"
+            echo ""
+            echo "  ${d}Provider:${r} Claude Code CLI"
+            echo "  ${d}Usage:${r}    ${c}hm${r} <question>  or  ${c}hm${r} to fix last failed command"
+            _sage_cli_ai_ask_disable
+            return 0
+            ;;
+        ollama)
+            local model=
+            [[ -n "${ZSH_SAGE_OLLAMA_MODEL}" ]] && model=" (using $ZSH_SAGE_OLLAMA_MODEL)"
+            echo "  ${b}AI is enabled${r} ${g}●${r}"
+            echo ""
+            echo "  ${d}Provider:${r} Ollama CLI$model"
+            echo "  ${d}Usage:${r}    ${c}hm${r} <question>  or  ${c}hm${r} to fix last failed command"
+            _sage_cli_ai_ask_disable
+            return 0
+            ;;
+    esac
 
     # Not enabled — explain and offer to enable
     echo "  ${b}AI Commands${r} ${d}(currently disabled)${r}"
@@ -357,36 +398,115 @@ _sage_cli_ai() {
     echo "    ${c}hm${r}   ${d}← fixes your last failed command${r}"
     echo ""
     echo "  ${b}How it works:${r}"
-    echo "  Uses your locally installed ${c}Claude Code${r} CLI (${c}claude -p${r})."
-    echo "  Each ${c}hm${r} call makes one API request against your Claude"
-    echo "  Code subscription. No sessions are saved — calls are ephemeral."
+    echo "  Uses your locally installed ${c}Claude Code${r} CLI (${c}claude -p${r})"
+    echo "  or ${c}Ollama${r} CLI (${c}ollama run${r}).  Each ${c}hm${r} call makes one "
+    echo "  API request against your Claude Code subscription, or local Ollama model."
+    echo "  No sessions are saved — calls are ephemeral."
     echo ""
 
+    local have_claude=false have_ollama=false
+
+    command -v claude &>/dev/null && have_claude=true
+    command -v ollama &>/dev/null && have_ollama=true
+
     # Check if Claude Code is installed
-    if ! command -v claude &>/dev/null; then
-        echo "  ${y}Claude Code is not installed.${r}"
-        echo "  Install it first: ${c}npm install -g @anthropic-ai/claude-code${r}"
+    if ! $have_claude && ! $have_ollama; then
+        echo "  ${y}Neither Claude Code nor Ollama are not installed.${r}"
+        echo "  Install one first:"
+        echo "    Claude: ${c}npm install -g @anthropic-ai/claude-code${r}"
+        local osid=$([ -f /etc/os-release ] && source /etc/os-release && echo $ID)
+        case "$osid" in
+            nix*)
+                echo "    Ollama: add 'ollama' to your Nix configuration" ;;
+            arch|manjaro|endeavouros|garuda)
+                echo "    Ollama: sudo pacman -S ollama" ;;
+            fedora)
+                echo "    Ollama: sudo dnf install ollama" ;;
+            debian|ubuntu|linuxmint|pop|kali|zorin)
+                echo "    Ollama: sudo apt install ollama" ;;
+            opensuse*|suse*)
+                echo "    Ollama: sudo zypper install ollama" ;;
+            gentoo)
+                echo "    Ollama: emerge --ask app-misc/ollama" ;;
+            void)
+                echo "    Ollama: sudo xbps-install -S ollama" ;;
+            *)
+                echo "    Ollama: curl -fsSL https://ollama.com/install.sh | sh" ;;
+        esac
         echo ""
         return 1
     fi
 
-    local claude_ver
-    claude_ver=$(claude --version 2>/dev/null | head -1)
-    echo "  ${g}Claude Code detected${r} ${d}(${claude_ver})${r}"
+    local longlist="Auto-detected" shortlist="Y"
+
+    if $have_claude ; then
+        local claude_ver
+        claude_ver=$(claude --version 2>/dev/null | head -1)
+        echo "  ${g}Claude Code detected${r} ${d}(${claude_ver})${r}"
+
+        longlist+=", Claude"
+        shortlist+="/c"
+    fi
+
+    if $have_ollama ; then
+        local ollama_ver
+        ollama_ver=$(ollama --version 2>/dev/null | head -1)
+        echo "  ${g}Ollama CLI detected${r} ${d}(${ollama_ver})${r}"
+
+        longlist+=", Ollama"
+        shortlist+="/o"
+    fi
+
+    longlist+=", or disabled"
+    shortlist+="/n"
+
     echo ""
-    echo -n "  ${b}Enable AI?${r} ${d}[Y/n]${r} "
+    echo -n "  ${b}Enable Sage with $longlist?${r} ${d}[$shortlist]${r} "
     local reply=""
     read -s -k 1 reply
     echo ""
 
-    if [[ "$reply" == "n" || "$reply" == "N" ]]; then
-        echo "  ${d}Cancelled. Run${r} ${c}zsage ai${r} ${d}anytime to enable.${r}"
-        echo ""
-        return 0
+    if ! $have_claude ; then
+        case $reply in
+            c|C) reply="" ;;
+        esac
     fi
 
-    _sage_ai_set_enabled true
-    export ZSH_SAGE_AI_ENABLED=true
+    if ! $have_ollama ; then
+        case $reply in
+            o|O) reply="" ;;
+        esac
+    fi
+
+    case "$reply" in
+        n|N)
+            echo ""
+            echo "  ${d}Cancelled. Run${r} ${c}zsage ai${r} ${d}anytime to enable.${r}"
+            echo ""
+            return 0
+            ;;
+
+        C|c)
+            echo ""
+            echo "  ${g}Claude Code selected${r}"
+            export ZSH_SAGE_AI_ENABLED=claude
+            _sage_ai_set_enabled $ZSH_SAGE_AI_ENABLED
+            ;;
+
+        O|o)
+            echo ""
+            echo "  ${g}Ollama API selected${r}"
+            export ZSH_SAGE_AI_ENABLED=ollama
+            _sage_ai_set_enabled $ZSH_SAGE_AI_ENABLED
+            ;;
+
+        *)
+            echo ""
+            echo "  ${g}Auto-detection selected${r}"
+            export ZSH_SAGE_AI_ENABLED=true
+            _sage_ai_set_enabled $ZSH_SAGE_AI_ENABLED
+            ;;
+    esac
 
     # Load the AI module into the current shell so `hm` works immediately —
     # no need to restart the shell or re-source ~/.zshrc.
@@ -404,6 +524,18 @@ _sage_cli_ai() {
 _sage_ai_set_enabled() {
     local enabled="$1"
     local zshrc="$HOME/.zshrc"
+
+    if ! [ -f "$zshrc" ] ; then
+        if [ $enabled != false ] ; then
+            local y r
+            _sage_color y yellow; _sage_color r reset
+            echo ""
+            echo "${y}  NOTE: zshrc not found, you should update your zsh configuration adding:${r}"
+            echo ""
+            echo "${y}    ZSH_SAGE_AI_ENABLED=${enabled}${r}"
+        fi
+        return 0
+    fi
 
     if grep -q "^export ZSH_SAGE_AI_ENABLED=" "$zshrc" 2>/dev/null; then
         sed -i '' "s/^export ZSH_SAGE_AI_ENABLED=.*/export ZSH_SAGE_AI_ENABLED=${enabled}/" "$zshrc"
