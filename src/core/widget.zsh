@@ -130,7 +130,7 @@ _sage_update_suggestion() {
         # score|command|freq_contrib|rec_contrib|dir_contrib|seq_contrib|succ_contrib
         # (sequence override fast path returns only "score|command" — contribs will be empty)
         local -a fields
-        fields=("${(@s:|:)result}")
+        fields=("${(@ps:$_SAGE_SEP:)result}")
         local score="${fields[1]}"
         local suggestion="${fields[2]}"
 
@@ -269,8 +269,8 @@ _sage_cycle_widget() {
 
     # Display the current cycle entry
     local entry="${_SAGE_CYCLE_RESULTS[$_SAGE_CYCLE_INDEX]}"
-    local score="${entry%%|*}"
-    local suggestion="${entry#*|}"
+    local score="${entry%%${_SAGE_SEP}*}"
+    local suggestion="${entry#*${_SAGE_SEP}}"
 
     if [[ -n "$suggestion" && "$suggestion" == "$prefix"* ]]; then
         _sage_highlight_reset
