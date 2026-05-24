@@ -43,6 +43,10 @@ _sage_coproc_start() {
 
     # Enable WAL mode for better concurrent access (multiple tabs)
     _sage_db_query_raw "PRAGMA journal_mode=WAL;" > /dev/null 2>&1
+    # Wait up to 5s when another connection holds the write lock
+    # instead of failing immediately with "database is locked". Matters
+    # for tests and for concurrent activity across multiple terminals.
+    _sage_db_query_raw "PRAGMA busy_timeout=5000;" > /dev/null 2>&1
 }
 
 # Check if coproc is still alive
@@ -137,7 +141,7 @@ _sage_db_exec() {
 
 # Fallback: run via sqlite3 fork (for init and import where coproc isn't ready)
 _sage_db_fork() {
-    printf '%s' "$1" | sqlite3 -separator '|' "$ZSH_SAGE_DB"
+    printf '%s' "$1" | sqlite3 -separator '|' -cmd ".timeout 5000" "$ZSH_SAGE_DB"
 }
 
 # ── Database initialization ──────────────────────────────────────
