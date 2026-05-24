@@ -7,6 +7,9 @@
 
 typeset -g _SAGE_COPROC_ALIVE=0
 typeset -g _SAGE_EOF_SENTINEL="__SAGE_e0f_7d2b9k__"
+# ASCII Unit Separator — used as field delimiter for sqlite output so
+# commands containing '|' (e.g. `ps -ef | grep foo`) don't corrupt parsing.
+typeset -g _SAGE_SEP=$'\x1f'
 
 # ── Coprocess management ─────────────────────────────────────────
 
@@ -25,7 +28,7 @@ _sage_coproc_start() {
     # stay valid and `.quit` from _sage_coproc_stop still gives it a
     # clean shutdown.
     setopt local_options no_monitor no_notify
-    coproc sqlite3 -separator '|' -cmd ".mode list" "$ZSH_SAGE_DB" 2>/dev/null
+    coproc sqlite3 -separator "$_SAGE_SEP" -cmd ".mode list" "$ZSH_SAGE_DB" 2>/dev/null
     disown 2>/dev/null
 
     # Verify the coproc actually started
@@ -147,7 +150,7 @@ _sage_db_exec() {
 
 # Fallback: run via sqlite3 fork (for init and import where coproc isn't ready)
 _sage_db_fork() {
-    printf '%s' "$1" | sqlite3 -separator '|' "$ZSH_SAGE_DB"
+    printf '%s' "$1" | sqlite3 -separator "$_SAGE_SEP" "$ZSH_SAGE_DB"
 }
 
 # ── Database initialization ──────────────────────────────────────

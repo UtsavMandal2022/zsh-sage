@@ -295,7 +295,7 @@ FROM (SELECT * FROM weight_accepts ORDER BY timestamp DESC LIMIT 500);")
 
     if [[ -n "$shares" ]]; then
         local -a share_fields
-        share_fields=("${(@s:|:)shares}")
+        share_fields=("${(@ps:$_SAGE_SEP:)shares}")
         printf "  ${m}frequency${r}    %s\n" "${share_fields[1]:-0}"
         printf "  ${m}recency${r}      %s\n" "${share_fields[2]:-0}"
         printf "  ${m}directory${r}    %s\n" "${share_fields[3]:-0}"
