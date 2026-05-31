@@ -92,16 +92,18 @@ ON CONFLICT(command, directory) DO UPDATE SET
     success_count = success_count + CASE WHEN ${exit_code} = 0 THEN 1 ELSE 0 END,
     fail_count = fail_count + CASE WHEN ${exit_code} != 0 THEN 1 ELSE 0 END;
 "
-        # Batch insert every 500 rows for speed
+        # Batch insert every 500 rows. Wrap in BEGIN/COMMIT so sqlite
+        # does one fsync per batch instead of one per INSERT (100-1000x
+        # faster on disk-backed DBs).
         if (( i % 500 == 0 )); then
-            printf '%s' "$sql" | sqlite3 "$ZSH_SAGE_DB"
+            printf 'BEGIN;\n%sCOMMIT;\n' "$sql" | sqlite3 "$ZSH_SAGE_DB"
             sql=""
         fi
     done
 
     # Insert remaining
     if [[ -n "$sql" ]]; then
-        printf '%s' "$sql" | sqlite3 "$ZSH_SAGE_DB"
+        printf 'BEGIN;\n%sCOMMIT;\n' "$sql" | sqlite3 "$ZSH_SAGE_DB"
     fi
 
     local total_stats=$(printf 'SELECT COUNT(*) FROM stats;' | sqlite3 "$ZSH_SAGE_DB")
