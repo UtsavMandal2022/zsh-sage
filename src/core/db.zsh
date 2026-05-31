@@ -31,7 +31,7 @@ _sage_coproc_start() {
     fi
     print -p ".print ${_SAGE_EOF_SENTINEL}" 2>/dev/null
     local line
-    while IFS= read -p -t 2 line 2>/dev/null; do
+    while IFS= read -r -p -t 2 line 2>/dev/null; do
         [[ "$line" == *"${_SAGE_EOF_SENTINEL}"* ]] && break
     done
 
@@ -54,7 +54,7 @@ _sage_coproc_check() {
     }
     # Drain the response
     local line
-    while IFS= read -p -t 2 line 2>/dev/null; do
+    while IFS= read -r -p -t 2 line 2>/dev/null; do
         [[ "$line" == "$_SAGE_EOF_SENTINEL" ]] && break
     done
     return 0
@@ -87,20 +87,26 @@ _sage_db_query_raw() {
         _sage_coproc_start
     fi
 
-    # Send query + sentinel
-    print -p "$sql" 2>/dev/null || {
+    # Send query + sentinel.
+    # `-r` (raw) is essential: without it, zsh's `print` interprets backslash
+    # escapes in the SQL string, so a user command like `echo foo\ bar` reaches
+    # sqlite as `echo foo bar` (backslash stripped) and gets stored that way.
+    print -r -p "$sql" 2>/dev/null || {
         # Coproc died — respawn and retry once
         _SAGE_COPROC_ALIVE=0
         _sage_coproc_start
-        print -p "$sql" 2>/dev/null || return 1
+        print -r -p "$sql" 2>/dev/null || return 1
     }
-    print -p ".print ${_SAGE_EOF_SENTINEL}" 2>/dev/null
+    print -r -p ".print ${_SAGE_EOF_SENTINEL}" 2>/dev/null
 
     # Read until sentinel (with timeout to prevent hangs)
-    # Use short timeout — queries should complete in <100ms
+    # Use short timeout — queries should complete in <100ms.
+    # `-r` (raw) is essential: without it, zsh's `read` strips backslashes from
+    # the input line, so a stored command like `echo foo\ bar` comes back as
+    # `echo foo bar` and the suggestion shown / accepted is missing the escape.
     local line
     local result=""
-    while IFS= read -p -t 1 line 2>/dev/null; do
+    while IFS= read -r -p -t 1 line 2>/dev/null; do
         [[ "$line" == *"${_SAGE_EOF_SENTINEL}"* ]] && break
         if [[ -n "$result" ]]; then
             result+=$'\n'"${line}"
