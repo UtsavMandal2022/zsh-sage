@@ -227,7 +227,7 @@ LIMIT 1;"
 
     local result
     result=$(_sage_db_query "$sql")
-    [[ -n "$result" ]] && printf '%s' "${result%%|*}"
+    [[ -n "$result" ]] && printf '%s' "${result%%${_SAGE_SEP}*}"
 }
 
 # Same as _sage_rank_candidates but returns "score|command" for confidence coloring
@@ -240,7 +240,7 @@ _sage_rank_with_score() {
     local seq_override
     seq_override=$(_sage_sequence_override "$prefix" "$prev_cmd")
     if [[ -n "$seq_override" ]]; then
-        printf '0.95|%s' "$seq_override"
+        printf '0.95%s%s' "$_SAGE_SEP" "$seq_override"
         return
     fi
 
@@ -364,7 +364,7 @@ _sage_rank_top_n() {
     local seq_cmd=""
     seq_cmd=$(_sage_sequence_override "$prefix" "$prev_cmd")
     if [[ -n "$seq_cmd" ]]; then
-        seq_override="0.95|${seq_cmd}"
+        seq_override="0.95${_SAGE_SEP}${seq_cmd}"
         # Reduce limit by 1 since override takes a slot
         limit=$((limit - 1))
     fi
@@ -456,7 +456,7 @@ LIMIT ${limit};"
         # Output rest, skipping the override command if it appears in scored results
         if [[ -n "$results" ]]; then
             echo "$results" | while IFS= read -r line; do
-                [[ "$line" == *"|${seq_cmd}" ]] && continue
+                [[ "$line" == *"${_SAGE_SEP}${seq_cmd}" ]] && continue
                 echo "$line"
             done
         fi
@@ -472,7 +472,7 @@ _sage_score_candidate() {
     local prev_cmd="$3"
     local now="$4"
 
-    # Parse pipe-delimited fields
+    # Parse pipe-delimited fields (test helper — fixtures use literal '|')
     local cmd="${candidate%%|*}";        candidate="${candidate#*|}"
     local freq="${candidate%%|*}";       candidate="${candidate#*|}"
     local last_used="${candidate%%|*}";  candidate="${candidate#*|}"
