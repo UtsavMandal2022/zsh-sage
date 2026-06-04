@@ -17,11 +17,15 @@ _sage_coproc_start() {
         return 0
     fi
 
+    # Disable job-control monitoring locally so zsh doesn't print
+    # "[N] PID" when the coproc starts. `disown` only stops the later
+    # "done" notification — by the time it runs, the spawn message is
+    # already on screen. NO_MONITOR suppresses both. The coproc is an
+    # internal implementation detail, not user-visible work; the fds
+    # stay valid and `.quit` from _sage_coproc_stop still gives it a
+    # clean shutdown.
+    setopt local_options no_monitor no_notify
     coproc sqlite3 -separator '|' -cmd ".mode list" "$ZSH_SAGE_DB" 2>/dev/null
-    # Detach from job control so zsh doesn't print "[N] PID" / "[N] done"
-    # notifications when the plugin is re-sourced. The coproc is an internal
-    # implementation detail, not user-visible work; the fds stay valid and
-    # `.quit` from _sage_coproc_stop still gives it a clean shutdown.
     disown 2>/dev/null
 
     # Verify the coproc actually started
@@ -31,7 +35,7 @@ _sage_coproc_start() {
     fi
     print -p ".print ${_SAGE_EOF_SENTINEL}" 2>/dev/null
     local line
-    while IFS= read -p -t 2 line 2>/dev/null; do
+    while IFS= read -r -p -t 2 line 2>/dev/null; do
         [[ "$line" == *"${_SAGE_EOF_SENTINEL}"* ]] && break
     done
 
@@ -54,7 +58,7 @@ _sage_coproc_check() {
     }
     # Drain the response
     local line
-    while IFS= read -p -t 2 line 2>/dev/null; do
+    while IFS= read -r -p -t 2 line 2>/dev/null; do
         [[ "$line" == "$_SAGE_EOF_SENTINEL" ]] && break
     done
     return 0
@@ -87,20 +91,26 @@ _sage_db_query_raw() {
         _sage_coproc_start
     fi
 
-    # Send query + sentinel
-    print -p "$sql" 2>/dev/null || {
+    # Send query + sentinel.
+    # `-r` (raw) is essential: without it, zsh's `print` interprets backslash
+    # escapes in the SQL string, so a user command like `echo foo\ bar` reaches
+    # sqlite as `echo foo bar` (backslash stripped) and gets stored that way.
+    print -r -p "$sql" 2>/dev/null || {
         # Coproc died — respawn and retry once
         _SAGE_COPROC_ALIVE=0
         _sage_coproc_start
-        print -p "$sql" 2>/dev/null || return 1
+        print -r -p "$sql" 2>/dev/null || return 1
     }
-    print -p ".print ${_SAGE_EOF_SENTINEL}" 2>/dev/null
+    print -r -p ".print ${_SAGE_EOF_SENTINEL}" 2>/dev/null
 
     # Read until sentinel (with timeout to prevent hangs)
-    # Use short timeout — queries should complete in <100ms
+    # Use short timeout — queries should complete in <100ms.
+    # `-r` (raw) is essential: without it, zsh's `read` strips backslashes from
+    # the input line, so a stored command like `echo foo\ bar` comes back as
+    # `echo foo bar` and the suggestion shown / accepted is missing the escape.
     local line
     local result=""
-    while IFS= read -p -t 1 line 2>/dev/null; do
+    while IFS= read -r -p -t 1 line 2>/dev/null; do
         [[ "$line" == *"${_SAGE_EOF_SENTINEL}"* ]] && break
         if [[ -n "$result" ]]; then
             result+=$'\n'"${line}"

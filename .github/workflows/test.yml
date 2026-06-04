@@ -45,5 +45,8 @@ jobs:
       - name: Run Scenario tests
         run: ZSH_SAGE_NO_COPROC=1 zsh tests/test_scenarios.sh
 
+      - name: Run Widget tests
+        run: ZSH_SAGE_NO_COPROC=1 zsh tests/test_widget.sh
+
       - name: Run Performance benchmarks
         run: ZSH_SAGE_NO_COPROC=1 zsh tests/test_performance.sh

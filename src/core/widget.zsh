@@ -231,6 +231,35 @@ _sage_accept_line_widget() {
     _sage_invoke_wrapped_widget accept-line
 }
 
+# ── Pre-redraw invariant check ───────────────────────────────────
+# Catches any widget that mutates BUFFER without going through one of
+# our wrappers (history navigation, undo, vi-mode edits, kill-ring
+# yanks, …). The invariant for live ghost text is:
+#   $_SAGE_CURRENT_SUGGESTION == $BUFFER$POSTDISPLAY  AND
+#   $_SAGE_CURRENT_SUGGESTION starts with $BUFFER
+# If either breaks, the ghost is stale — clear it.
+_sage_pre_redraw_widget() {
+    [[ -z "$POSTDISPLAY" ]] && return
+    if [[ "$_SAGE_CURRENT_SUGGESTION" != "$BUFFER$POSTDISPLAY" \
+       || "$_SAGE_CURRENT_SUGGESTION" != "$BUFFER"* ]]; then
+        _sage_highlight_reset
+        POSTDISPLAY=""
+        _sage_clear_state
+    fi
+}
+
+# Invokes the wrapped widget, then runs the invariant check and
+# regenerates a suggestion. Used to back up the line-pre-redraw hook
+# for widgets (e.g. completion) that don't reliably trigger a redraw,
+# and to refresh ghost text against the new buffer.
+_sage_post_invariant_widget() {
+    emulate -L zsh
+    _sage_invoke_wrapped_widget "$WIDGET"
+    _sage_pre_redraw_widget
+    _sage_update_suggestion
+    zle -R
+}
+
 # ── Cycle through alternatives (Ctrl+Space) ─────────────────────
 _sage_cycle_widget() {
     emulate -L zsh
@@ -296,22 +325,6 @@ _sage_cycle_widget() {
     zle -R
 }
 
-# ── Tab completion wrapper ───────────────────────────────────────
-# After tab completes a word, the buffer changes but our ghost text
-# stays stale. This wrapper clears stale ghost text, runs the real
-# completion, then re-suggests.
-_sage_complete_widget() {
-    _sage_highlight_reset
-    POSTDISPLAY=""
-
-    # Call the original expand-or-complete (saved before we override)
-    _sage_invoke_wrapped_widget expand-or-complete
-
-    # Re-suggest based on the now-completed buffer
-    _sage_update_suggestion
-    zle -R
-}
-
 # ── This function wraps the bracketed-paste widget, which is called
 # when text is pasted into the buffer, and updates the suggestion.
 _sage_bracketed_paste() {
@@ -353,14 +366,22 @@ _sage_widget_init() {
     _sage_register_widget_wrapper _sage_suggest_widget self-insert
     _sage_register_widget_wrapper _sage_suggest_widget magic-space
 
-    _sage_register_widget_wrapper _sage_complete_widget expand-or-complete
-
     zle -N sage-cycle _sage_cycle_widget
     bindkey '^N' sage-cycle             # Ctrl+N (next suggestion)
+
+    # Completion can change BUFFER without triggering line-pre-redraw
+    # on every setup, so explicitly run the invariant check after.
+    _sage_register_widget_wrapper _sage_post_invariant_widget expand-or-complete
+    _sage_register_widget_wrapper _sage_post_invariant_widget complete-word
 
     _sage_register_widget_wrapper _sage_backward_kill_word backward-kill-word
     _sage_register_widget_wrapper _sage_backward_delete_char backward-delete-char
     _sage_register_widget_wrapper _sage_bracketed_paste bracketed-paste
+
+    # Single hook catches any other widget that mutates BUFFER behind
+    # our back (history nav, undo, vi edits, …) — no per-widget wrapping.
+    autoload -Uz add-zle-hook-widget
+    add-zle-hook-widget line-pre-redraw _sage_pre_redraw_widget
 }
 
 # ── Backspace handler ────────────────────────────────────────────

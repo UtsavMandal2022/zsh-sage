@@ -181,6 +181,34 @@ assert_eq "Pipe+quotes command recorded safely" "1" "$special_count"
 
 # ─────────────────────────────────────────────────────────────────
 echo ""
+echo "=== Test: Coproc-spawn notification suppression (issue #5, PR #13) ==="
+
+# Regression guard for issue #5: zsh's job control prints "[N] PID" when a
+# coproc is spawned in an interactive shell (MONITOR on). The fix uses
+# `setopt local_options no_monitor` BEFORE invoking `coproc` so the
+# notification is suppressed at spawn time — `disown` alone runs too late.
+#
+# We can't easily exercise terminal-output behavior from a non-PTY test, so
+# whitebox-check that the function body keeps the setopt line *before* the
+# coproc invocation. Catches accidental removal or re-ordering during refactors.
+# Anchor on `coproc sqlite3` (the actual invocation) rather than the bare word
+# `coproc` — the latter also appears in the function name `_sage_coproc_start`.
+coproc_start_body="$(typeset -f _sage_coproc_start)"
+before_invocation="${coproc_start_body%%coproc sqlite3*}"
+after_invocation="${coproc_start_body#*coproc sqlite3}"
+
+case "$before_invocation" in
+    *no_monitor*) echo "  PASS: setopt no_monitor present before coproc invocation"; PASS=$((PASS+1)) ;;
+    *)            echo "  FAIL: no_monitor not found before coproc — spawn notification will leak"; FAIL=$((FAIL+1)) ;;
+esac
+
+case "$after_invocation" in
+    *no_monitor*) echo "  FAIL: no_monitor appears AFTER coproc — would be too late to suppress spawn"; FAIL=$((FAIL+1)) ;;
+    *)            echo "  PASS: no_monitor not placed after coproc (correct position)"; PASS=$((PASS+1)) ;;
+esac
+
+# ─────────────────────────────────────────────────────────────────
+echo ""
 echo "==========================================="
 echo "Results: $PASS passed, $FAIL failed"
 echo "==========================================="
