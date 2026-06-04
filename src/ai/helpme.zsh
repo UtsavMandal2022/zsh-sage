@@ -1,32 +1,81 @@
 #
-# hm — AI-powered command assistance via Claude Code
+# hm — AI-powered command assistance via Claude Code or Ollama
 #
 # Usage:
 #   hm <question>   Ask AI for a command (e.g. "hm find files larger than 1GB")
 #   hm              Analyze the previous failed command and suggest a fix
 #
-# Requires: Claude Code CLI installed (claude)
+# Enabled via ZSH_SAGE_AI_ENABLED=[auto|claude|ollama]
 #
-# Uses --no-session-persistence so hm calls don't clutter
+# Requires: Claude Code CLI installed (claude), or Ollama
+#
+# Claude uses --no-session-persistence so hm calls don't clutter
 # your Claude session history.
+#
+# Ollama will use the most recently used/installed model, can be explicitly
+# selected with ZSH_SAGE_OLLAMA_MODEL environment variable.
 #
 
 hm() {
-    if [[ "$ZSH_SAGE_AI_ENABLED" != "true" ]]; then
-        echo ""
-        echo "  hm is not enabled. Run zsage ai to set it up."
-        echo ""
-        return 1
-    fi
+    case "$ZSH_SAGE_AI_ENABLED" in
+        true|auto)
+            if ! command -v claude &>/dev/null; then
+                ZSH_SAGE_AI_ENABLED=claude
 
-    if ! command -v claude &>/dev/null; then
-        echo ""
-        echo "  hm needs Claude Code. Install it:"
-        echo ""
-        echo "    npm install -g @anthropic-ai/claude-code"
-        echo ""
-        return 1
-    fi
+            elif ! command -v ollama &>/dev/null; then
+                ZSH_SAGE_AI_ENABLED=ollama
+
+            else
+                echo >&2 ""
+                echo >&2 "  hm needs Claude Code or Ollama. Run zsage ai to set it up."
+                echo >&2 ""
+                return 1
+            fi
+            ;;
+        claude)
+            if ! command -v claude &>/dev/null; then
+                echo >&2 ""
+                echo >&2 "  hm needs Claude Code. Install it:"
+                echo >&2 ""
+                echo >&2 "    npm install -g @anthropic-ai/claude-code"
+                echo >&2 ""
+                return 1
+            fi
+            ;;
+        ollama)
+            if ! command -v ollama &>/dev/null; then
+                echo >&2 ""
+                echo >&2 "  hm needs Ollama. Install it."
+                echo >&2 ""
+                return 1
+            fi
+            if [[ "${ZSH_SAGE_OLLAMA_MODEL}" = "" ]] ; then
+                while read a b ; do
+                    if [[ "$a" != NAME ]] ; then
+                        echo >&2 "zsh-sage using loaded ollama model: $a"
+                        ZSH_SAGE_OLLAMA_MODEL="$a"
+                        break
+                    fi
+                done < <(ollama ps)
+
+                if [[ "${ZSH_SAGE_OLLAMA_MODEL}" = "" ]] ; then
+                    while read a b ; do
+                        if [[ "$a" != NAME ]] ; then
+                            echo >&2 "zsh-sage using recently installed ollama model: $a"
+                            ZSH_SAGE_OLLAMA_MODEL="$a"
+                            break
+                        fi
+                    done < <(ollama list)
+                fi
+            fi
+            ;;
+        *)
+            echo >&2 ""
+            echo >&2 "  hm is not enabled. Run zsage ai to set it up."
+            echo >&2 ""
+            return 1
+            ;;
+    esac
 
     if [[ $# -gt 0 ]]; then
         _sage_helpme_ask "$*"
@@ -36,6 +85,7 @@ hm() {
 }
 
 # Alias for discoverability
+unalias helpme 2>/dev/null
 alias helpme=hm
 
 # ── Question mode ────────────────────────────────────────────────
@@ -97,7 +147,7 @@ _sage_helpme_fix() {
     local context
     context=$(_sage_helpme_context)
 
-    local prompt="You are a shell command expert. The user's last command failed. Analyze the error and suggest the corrected command. Return ONLY the corrected command — no explanation, no markdown, no quotes around it.
+    local prompt="You are a shell command expert. The user's last command failed. Analyze the error and suggest the corrected command. Return ONLY the corrected command — no explanation, no markdown, no quotes around it, do not split command across lines.
 
 ${context}
 
@@ -110,13 +160,13 @@ Corrected command:"
     result=$(_sage_helpme_call "$prompt")
 
     if [[ -z "$result" ]]; then
-        echo "  Could not get a suggestion."
+        echo >&2 "  Could not get a suggestion."
         return 1
     fi
 
-    echo ""
-    echo "  Failed: ${last_cmd}"
-    echo "  Exit code: ${last_exit}"
+    echo >&2 ""
+    echo >&2 "  Failed: ${last_cmd}"
+    echo >&2 "  Exit code: ${last_exit}"
     _sage_helpme_display "$result"
 }
 
@@ -155,7 +205,18 @@ _sage_helpme_call() {
     local spinner_pid=$!
 
     local raw
-    raw=$(claude -p "$prompt" --max-turns 1 --no-session-persistence 2>/dev/null)
+    case "$ZSH_SAGE_AI_ENABLED" in
+        claude)
+            raw=$(claude -p "$prompt" --max-turns 1 --no-session-persistence 2>/dev/null)
+            ;;
+        ollama)
+            raw=$(ollama run "${ZSH_SAGE_OLLAMA_MODEL}" "$prompt" --hidethinking 2>/dev/null)
+            ;;
+        *)
+            echo >&2 "invalid ZSH_SAGE_AI_ENABLED=$ZSH_SAGE_AI_ENABLED setting."
+            ;;
+    esac
+
     local exit_code=$?
 
     # Stop spinner
@@ -222,7 +283,8 @@ _sage_helpme_display() {
     fi
 
     # Build the box — wrap long commands
-    local max_width=70
+    local term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
+    local max_width=$(( term_width - 10 ))
     local -a lines=()
 
     if (( ${#cmd} <= max_width )); then
@@ -269,7 +331,7 @@ _sage_helpme_display() {
     done
     (( box_width < 40 )) && box_width=40
 
-    local border=$(printf '%*s' "$box_width" '' | tr ' ' '─')
+    local border=${(pl:$box_width::─:)}
 
     echo ""
     echo "  ${d}┌${border}┐${r}"

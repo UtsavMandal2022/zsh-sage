@@ -77,13 +77,16 @@ source "$ZSH_SAGE_DIR/src/core/cli.zsh"
 
 # AI commands — only loaded when explicitly enabled
 # Zero footprint for non-AI users: no functions, no code, nothing sourced
-if [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]]; then
-    source "$ZSH_SAGE_DIR/src/ai/helpme.zsh"
-else
-    # Lightweight stub — only exists to guide users who type `hm` without setup.
-    hm() { echo "AI commands are not enabled. Run 'zsage ai' to set up."; }
-    alias helpme=hm
-fi
+case "$ZSH_SAGE_AI_ENABLED" in
+    true|auto|ollama|claude)
+        source "$ZSH_SAGE_DIR/src/ai/helpme.zsh"
+        ;;
+    *)
+        # Lightweight stub — only exists to guide users who type `hm` without setup.
+        hm() { echo "AI commands are not enabled. Run 'zsage ai' to set up."; }
+        alias helpme=hm
+        ;;
+esac
 
 # ── Initialize ───────────────────────────────────────────────────────
 _sage_init() {
