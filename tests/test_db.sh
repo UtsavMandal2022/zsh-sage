@@ -12,6 +12,11 @@ FAIL=0
 # Source only what we need
 export ZSH_SAGE_DB="$TEST_DB"
 export ZSH_SAGE_MAX_CANDIDATES=10
+# Force fork-mode for every DB call so each operation opens, commits,
+# and closes within a single sqlite3 process. The persistent coproc
+# would run alongside the verifying `sqlite3 "$TEST_DB" "..."` forks,
+# producing transient `database is locked` failures even under WAL.
+export ZSH_SAGE_NO_COPROC=1
 source "$(dirname $0)/../src/core/db.zsh"
 
 cleanup() {
