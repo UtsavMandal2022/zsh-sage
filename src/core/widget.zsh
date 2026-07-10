@@ -96,9 +96,10 @@ _sage_highlight_apply() {
 _sage_suggest_widget() {
     emulate -L zsh
     local -i KEYS_QUEUED_COUNT
+    local original_widget="${1:-self-insert}"
 
     _sage_highlight_reset
-    _sage_invoke_wrapped_widget self-insert
+    _sage_invoke_wrapped_widget "$original_widget"
 
     # Skip suggestion if more keys are buffered (paste or fast typing)
     if (( PENDING > 0 || KEYS_QUEUED_COUNT > 0 )); then
@@ -107,6 +108,11 @@ _sage_suggest_widget() {
 
     _sage_update_suggestion
     zle -R
+}
+
+_sage_suggest_widget_magic_space() {
+    emulate -L zsh
+    _sage_suggest_widget magic-space
 }
 
 # ── Update suggestion based on current buffer ────────────────────
@@ -364,7 +370,7 @@ _sage_widget_init() {
     zle -N sage-dismiss _sage_dismiss_widget
     _sage_register_widget_wrapper _sage_accept_line_widget accept-line
     _sage_register_widget_wrapper _sage_suggest_widget self-insert
-    _sage_register_widget_wrapper _sage_suggest_widget magic-space
+    _sage_register_widget_wrapper _sage_suggest_widget_magic_space magic-space
 
     zle -N sage-cycle _sage_cycle_widget
     bindkey '^N' sage-cycle             # Ctrl+N (next suggestion)
