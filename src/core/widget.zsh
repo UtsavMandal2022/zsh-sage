@@ -92,6 +92,61 @@ _sage_highlight_apply() {
     fi
 }
 
+# ── Width-aware POSTDISPLAY assignment ───────────────────────────
+# A ghost suggestion long enough to wrap the command line onto a second
+# terminal row can, inside tmux, trigger an implicit pane scroll that
+# zle's redraw math doesn't know about — the next redraw (typically the
+# very next up-line-or-history) inherits a stale row count and the
+# cursor lands one row off. Clamping POSTDISPLAY to the space actually
+# left on the current row avoids the wrap (and the scroll) entirely.
+#
+# Prompt width is measured by %-expanding $PROMPT and stripping ANSI
+# CSI/OSC sequences — imperfect for wide glyphs (nerd-font icons,
+# emoji) but that only makes the estimate conservative, which is the
+# safe direction to be wrong in here. A fixed safety margin covers the
+# rest.
+_sage_visible_width() {
+    emulate -L zsh
+    setopt extendedglob   # needed for the #/## repetition and (a|b) alternation below
+
+    local s="$1"
+    local esc=$'\e'
+    local bel=$'\a'
+
+    # Strip CSI sequences: ESC [ params... final-byte (colors, cursor moves, ...)
+    s="${s//${esc}\[[0-9;]#[a-zA-Z]/}"
+    # Strip OSC sequences: ESC ] ...text... terminated by BEL or ESC \
+    # (hyperlinks, shell-integration marks, ...)
+    s="${s//${esc}\][^$bel$esc]#($bel|$esc\\)/}"
+    # Strip any remaining lone ESC bytes
+    s="${s//$esc/}"
+
+    print -rn -- "${#s}"
+}
+
+_sage_set_postdisplay() {
+    local tail="$1"
+
+    if [[ -z "$tail" ]]; then
+        POSTDISPLAY=""
+        return
+    fi
+
+    local prompt_width
+    prompt_width=$(_sage_visible_width "${(%)PROMPT}")
+
+    local -i margin=2
+    local -i available=$(( ${COLUMNS:-80} - prompt_width - $#BUFFER - margin ))
+
+    if (( available < 1 )); then
+        POSTDISPLAY=""
+    elif (( $#tail > available )); then
+        POSTDISPLAY="${tail[1,available]}"
+    else
+        POSTDISPLAY="$tail"
+    fi
+}
+
 # ── Main suggestion widget ───────────────────────────────────────
 _sage_suggest_widget() {
     emulate -L zsh
@@ -143,7 +198,7 @@ _sage_update_suggestion() {
             _SAGE_CURRENT_SEQ_CONTRIB="${fields[6]:-0}"
             _SAGE_CURRENT_SUCC_CONTRIB="${fields[7]:-0}"
 
-            POSTDISPLAY="${suggestion#$prefix}"
+            _sage_set_postdisplay "${suggestion#$prefix}"
 
             local style
             style=$(_sage_confidence_style "$score")
@@ -234,14 +289,15 @@ _sage_accept_line_widget() {
 # ── Pre-redraw invariant check ───────────────────────────────────
 # Catches any widget that mutates BUFFER without going through one of
 # our wrappers (history navigation, undo, vi-mode edits, kill-ring
-# yanks, …). The invariant for live ghost text is:
-#   $_SAGE_CURRENT_SUGGESTION == $BUFFER$POSTDISPLAY  AND
-#   $_SAGE_CURRENT_SUGGESTION starts with $BUFFER
-# If either breaks, the ghost is stale — clear it.
+# yanks, …). POSTDISPLAY may be a width-clamped *prefix* of the
+# remaining suggestion (see _sage_set_postdisplay), not the full tail,
+# so the invariant for live ghost text is a prefix check, not equality:
+#   $_SAGE_CURRENT_SUGGESTION starts with $BUFFER$POSTDISPLAY
+# (which implies it also starts with $BUFFER). If it doesn't, the
+# ghost is stale — clear it.
 _sage_pre_redraw_widget() {
     [[ -z "$POSTDISPLAY" ]] && return
-    if [[ "$_SAGE_CURRENT_SUGGESTION" != "$BUFFER$POSTDISPLAY" \
-       || "$_SAGE_CURRENT_SUGGESTION" != "$BUFFER"* ]]; then
+    if [[ "$_SAGE_CURRENT_SUGGESTION" != "$BUFFER$POSTDISPLAY"* ]]; then
         _sage_highlight_reset
         POSTDISPLAY=""
         _sage_clear_state
@@ -304,7 +360,7 @@ _sage_cycle_widget() {
     if [[ -n "$suggestion" && "$suggestion" == "$prefix"* ]]; then
         _sage_highlight_reset
         _SAGE_CURRENT_SUGGESTION="$suggestion"
-        POSTDISPLAY="${suggestion#$prefix}"
+        _sage_set_postdisplay "${suggestion#$prefix}"
 
         # Zero out contributions — cycled suggestions don't have per-signal breakdown
         # This prevents recording inaccurate data if the user accepts this entry
