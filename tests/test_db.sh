@@ -148,11 +148,11 @@ echo "=== Test: Sequence Score ==="
 
 _sage_db_sequence_score "git commit" "git status"
 seq_score="$REPLY"
-assert_eq "git commit follows git status (score > 0)" "true" "$(echo "$seq_score > 0" | bc -l | grep -q 1 && echo true || echo false)"
+assert_eq "git commit follows git status (score > 0)" 1 $((seq_score > 0))
 
 _sage_db_sequence_score "npm test" "git status"
 seq_score_zero="$REPLY"
-assert_eq "npm test doesn't follow git status" "true" "$(echo "$seq_score_zero == 0" | bc -l | grep -q 1 && echo true || echo false)"
+assert_eq "npm test doesn't follow git status" 1 $((seq_score_zero == 0))
 
 # ─────────────────────────────────────────────────────────────────
 echo ""

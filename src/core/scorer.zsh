@@ -463,30 +463,30 @@ LIMIT ${limit};"
 
 # Score a single candidate (kept for testing — uses the same SQL approach)
 _sage_score_candidate() {
+    zmodload zsh/mathfunc
+
     local candidate="$1"
     local current_dir="$2"
     local prev_cmd="$3"
     local now="$4"
 
     # Parse pipe-delimited fields
-    local cmd="${candidate%%|*}";        candidate="${candidate#*|}"
-    local freq="${candidate%%|*}";       candidate="${candidate#*|}"
-    local last_used="${candidate%%|*}";  candidate="${candidate#*|}"
-    local success="${candidate%%|*}";    candidate="${candidate#*|}"
-    local fail="$candidate"
-
-    : ${freq:=0} ${last_used:=0} ${success:=0} ${fail:=0}
+    local cmd=${${candidate%%|*}:-};        candidate=${candidate#*|}
+    local -F freq=${${candidate%%|*}:-0};       candidate=${candidate#*|}
+    local -F last_used=${${candidate%%|*}:-0}  candidate=${candidate#*|}
+    local -F success=${${candidate%%|*}:-0}    candidate=${candidate#*|}
+    local -F fail=${candidate:-0}
 
     _sage_sql_escape "$cmd"; local e_cmd="$REPLY"
     _sage_sql_escape "$current_dir"; local e_dir="$REPLY"
     _sage_sql_escape "$prev_cmd"; local e_prev="$REPLY"
-    local half_life="${ZSH_SAGE_RECENCY_HALFLIFE:-259200}"
+    local -i half_life="${ZSH_SAGE_RECENCY_HALFLIFE:-259200}"
 
-    local wf="$ZSH_SAGE_W_FREQUENCY"
-    local wr="$ZSH_SAGE_W_RECENCY"
-    local wd="$ZSH_SAGE_W_DIRECTORY"
-    local ws="$ZSH_SAGE_W_SEQUENCE"
-    local wk="$ZSH_SAGE_W_SUCCESS"
+    local -F wf="$ZSH_SAGE_W_FREQUENCY"
+    local -F wr="$ZSH_SAGE_W_RECENCY"
+    local -F wd="$ZSH_SAGE_W_DIRECTORY"
+    local -F ws="$ZSH_SAGE_W_SEQUENCE"
+    local -F wk="$ZSH_SAGE_W_SUCCESS"
 
     # Get max frequency for normalization
     _sage_db_query "SELECT MAX(frequency) FROM stats;"
@@ -500,29 +500,28 @@ _sage_score_candidate() {
     _sage_db_query "SELECT CAST(COUNT(*) AS REAL) / MAX((SELECT COUNT(*) FROM commands WHERE prev_command='${e_prev}'),1) FROM commands WHERE command='${e_cmd}' AND prev_command='${e_prev}';"
     local -F seq_score=${REPLY:-0}
 
-    # Compute score in one bc call
+    # Compute score
     local total=$((success + fail))
-    local success_rate=0.5
+    local -F success_rate=0.5
     if (( total > 0 )); then
-        success_rate=$(echo "$success / $total" | bc -l)
+        success_rate=$((success / total))
     fi
 
     local age=$((now - last_used))
-    local recency
-    recency=$(echo "e(-0.693147 * $age / $half_life)" | bc -l)
+    local -F recency=$((exp(-0.693147 * age / half_life)))
 
     local freq_norm=0
     if (( max_freq > 0 )); then
-        freq_norm=$(echo "x = sqrt($freq / $max_freq); if (x > 1) 1 else x" | bc -l)
+        freq_norm=$((sqrt(freq / max_freq)))
+        ((freq_norm > 1)) && freq_norm=1
     fi
 
     local dir_norm=0
     if (( max_freq > 0 && dir_freq > 0 )); then
-        dir_norm=$(echo "x = sqrt($dir_freq / $max_freq); if (x > 1) 1 else x" | bc -l)
+        dir_norm=$((1, sqrt(dir_freq / max_freq)))
+        ((dir_norm > 1)) && dir_norm=1
     fi
-
-    local final
-    final=$(echo "${wf} * ${freq_norm} + ${wr} * ${recency} + ${wd} * ${dir_norm} + ${ws} * ${seq_score} + ${wk} * ${success_rate}" | bc -l)
-
+    
+    local final=$((wf * freq_norm + wr * recency + wd * dir_norm + ws * seq_score + wk * success_rate))
     reply=($final $cmd)
 }

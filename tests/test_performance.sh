@@ -10,13 +10,13 @@ set -uo pipefail
 
 TEST_DB="/tmp/sage-perf-test-$$.db"
 
-export ZSH_SAGE_DB="$TEST_DB"
-export ZSH_SAGE_MAX_CANDIDATES=10
-export ZSH_SAGE_W_FREQUENCY="0.30"
-export ZSH_SAGE_W_RECENCY="0.25"
-export ZSH_SAGE_W_DIRECTORY="0.20"
-export ZSH_SAGE_W_SEQUENCE="0.15"
-export ZSH_SAGE_W_SUCCESS="0.10"
+typeset -gx ZSH_SAGE_DB="$TEST_DB"
+typeset -gxi ZSH_SAGE_MAX_CANDIDATES=10
+typeset -gxF ZSH_SAGE_W_FREQUENCY=0.30
+typeset -gxF ZSH_SAGE_W_RECENCY=0.25
+typeset -gxF ZSH_SAGE_W_DIRECTORY=0.20
+typeset -gxF ZSH_SAGE_W_SEQUENCE=0.15
+typeset -gxF ZSH_SAGE_W_SUCCESS=0.10
 
 SCRIPT_DIR="$(dirname $0)"
 source "$SCRIPT_DIR/../src/core/db.zsh"
@@ -59,10 +59,11 @@ DIRS=(
 )
 
 seed_database() {
-    local count="$1"
-    local now=$EPOCHSECONDS
+    local -i count="$1"
+    local -i now=$EPOCHSECONDS
     local sql=""
-    local i cmd_idx dir_idx cmd dir prev_cmd exit_code ts
+    local -i i cmd_idx dir_idx exit_code ts
+    local cmd dir prev_cmd 
 
     echo -n "  Seeding $count entries... "
 
@@ -109,40 +110,32 @@ ON CONFLICT(command, directory) DO UPDATE SET
     echo "done ($total_cmds command rows, $total_stats unique stats)"
 }
 
-typeset -g _BENCH_LAST_AVG=0
+typeset -gi _BENCH_LAST_AVG=0
 
 benchmark_operation() {
     local label="$1"
     shift
-    local runs=5
-    local i t
-    local sum=0
-    local min=999999
-    local max=0
-    local measurements=""
+    local -i runs=5
+    local -a measurements=()
 
-    for i in $(seq 1 $runs); do
+    local -i i
+    for i in {1..$runs}; do
         time_ms "$@"
-        t="$REPLY"
-        measurements+="${t}\n"
+        measurements+=($REPLY)
     done
 
-    # Use bc for all float math
-    local stats
-    stats=$(printf "$measurements" | python3 -c "
-import sys
-vals = [float(l.strip()) for l in sys.stdin if l.strip()]
-if vals:
-    print(f'{min(vals):.1f} {sum(vals)/len(vals):.1f} {max(vals):.1f}')
-else:
-    print('0.0 0.0 0.0')
-")
+    local -F min_v=${measurements[1]}
+    local -F max_v=${measurements[1]}
+    local -F sum=${measurements[1]}
+    local -F t
+    for t in ${measurements[2,-1]}; do
+        (( t < min_v )) && min_v=$t
+        (( t > max_v )) && max_v=$t
+        (( sum += t ))
+    done
+    local -F avg_v=$(( sum / $#measurements ))
 
-    local min_v="${stats%% *}"; stats="${stats#* }"
-    local avg_v="${stats%% *}"
-    local max_v="${stats#* }"
-
-    printf "  %-40s  min:%7sms  avg:%7sms  max:%7sms\n" "$label" "$min_v" "$avg_v" "$max_v"
+    printf "  %-40s  min:%7.1fms  avg:%7.1fms  max:%7.1fms\n" "$label" "$min_v" "$avg_v" "$max_v"
     _BENCH_LAST_AVG="${avg_v%%.*}"  # Integer for comparison
 }
 

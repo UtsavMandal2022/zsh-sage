@@ -20,6 +20,16 @@ _sage_color() {
     fi
 }
 
+# Render a weight (0-1) as a 20-wide bar of |, right-padded with spaces
+_sage_weight_bar() {
+    local -F weight="$1"
+    local -i bar_len
+    (( bar_len = weight * 20 ))
+    (( bar_len < 0 )) && bar_len=0
+    (( bar_len > 20 )) && bar_len=20
+    REPLY="${(r:20:: :)${(l:$bar_len::|:):-}}"
+}
+
 _sage_banner() {
     local g r c y d b m
     _sage_color g green; _sage_color r reset; _sage_color c cyan
@@ -133,6 +143,15 @@ _sage_cli_status() {
     local db_size
     db_size=$(du -h "$ZSH_SAGE_DB" 2>/dev/null | cut -f1)
 
+    local ai_status="${d}no${r}"
+    [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]] && ai_status="${g}yes${r}"
+
+    _sage_weight_bar "$ZSH_SAGE_W_FREQUENCY"; local bar_freq="$REPLY"
+    _sage_weight_bar "$ZSH_SAGE_W_RECENCY"; local bar_recency="$REPLY"
+    _sage_weight_bar "$ZSH_SAGE_W_DIRECTORY"; local bar_dir="$REPLY"
+    _sage_weight_bar "$ZSH_SAGE_W_SEQUENCE"; local bar_seq="$REPLY"
+    _sage_weight_bar "$ZSH_SAGE_W_SUCCESS"; local bar_success="$REPLY"
+
     _sage_banner
     cat <<EOF
 
@@ -141,14 +160,14 @@ ${b}STATUS${r}
   ${d}Database${r}        $ZSH_SAGE_DB ${d}($db_size)${r}
   ${d}Commands logged${r} ${c}${cmd_count:-0}${r}
   ${d}Unique commands${r} ${c}${stat_count:-0}${r}
-  ${d}AI enabled${r}      $(if [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]]; then echo "${g}yes${r}"; else echo "${d}no${r}"; fi)
+  ${d}AI enabled${r}      $ai_status
 
 ${b}WEIGHTS${r}
-  ${m}frequency${r}  $ZSH_SAGE_W_FREQUENCY  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_FREQUENCY * 20 / 1" | bc)))")${r}
-  ${m}recency${r}    $ZSH_SAGE_W_RECENCY  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_RECENCY * 20 / 1" | bc)))")${r}
-  ${m}directory${r}   $ZSH_SAGE_W_DIRECTORY  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_DIRECTORY * 20 / 1" | bc)))")${r}
-  ${m}sequence${r}    $ZSH_SAGE_W_SEQUENCE  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_SEQUENCE * 20 / 1" | bc)))")${r}
-  ${m}success${r}     $ZSH_SAGE_W_SUCCESS  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_SUCCESS * 20 / 1" | bc)))")${r}
+  ${m}frequency${r}  $ZSH_SAGE_W_FREQUENCY  ${d}$bar_freq${r}
+  ${m}recency${r}    $ZSH_SAGE_W_RECENCY  ${d}$bar_recency${r}
+  ${m}directory${r}   $ZSH_SAGE_W_DIRECTORY  ${d}$bar_dir${r}
+  ${m}sequence${r}    $ZSH_SAGE_W_SEQUENCE  ${d}$bar_seq${r}
+  ${m}success${r}     $ZSH_SAGE_W_SUCCESS  ${d}$bar_success${r}
 EOF
 }
 

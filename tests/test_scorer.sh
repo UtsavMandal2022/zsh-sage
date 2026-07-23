@@ -7,18 +7,18 @@ zmodload zsh/datetime
 
 set -uo pipefail
 
-TEST_DB="/tmp/sage-scorer-test-$$.db"
-PASS=0
-FAIL=0
+typeset -g TEST_DB="/tmp/sage-scorer-test-$$.db"
+typeset -gi PASS=0
+typeset -gi FAIL=0
 
 # Source modules
-export ZSH_SAGE_DB="$TEST_DB"
-export ZSH_SAGE_MAX_CANDIDATES=10
-export ZSH_SAGE_W_FREQUENCY="0.30"
-export ZSH_SAGE_W_RECENCY="0.25"
-export ZSH_SAGE_W_DIRECTORY="0.20"
-export ZSH_SAGE_W_SEQUENCE="0.15"
-export ZSH_SAGE_W_SUCCESS="0.10"
+typeset -gx ZSH_SAGE_DB="$TEST_DB"
+typeset -gxi ZSH_SAGE_MAX_CANDIDATES=10
+typeset -gxF ZSH_SAGE_W_FREQUENCY=0.30
+typeset -gxF ZSH_SAGE_W_RECENCY=0.25
+typeset -gxF ZSH_SAGE_W_DIRECTORY=0.20
+typeset -gxF ZSH_SAGE_W_SEQUENCE=0.15
+typeset -gxF ZSH_SAGE_W_SUCCESS=0.10
 
 source "$(dirname $0)/../src/core/db.zsh"
 source "$(dirname $0)/../src/core/scorer.zsh"
@@ -30,12 +30,12 @@ assert_eq() {
     local desc="$1" expected="$2" actual="$3"
     if [[ "$expected" == "$actual" ]]; then
         echo "  PASS: $desc"
-        PASS=$((PASS + 1))
+        ((PASS++))
     else
         echo "  FAIL: $desc"
         echo "    expected: '$expected'"
         echo "    actual:   '$actual'"
-        FAIL=$((FAIL + 1))
+        ((FAIL++))
     fi
 }
 
@@ -117,14 +117,14 @@ candidate="git commit -m 'update'|50|${now}|50|0"
 _sage_score_candidate "$candidate" "/Users/user/project" "git add ." "$now"
 score=${reply[1]}
 echo "  High-signal candidate score: $score"
-assert_eq "High-signal score > 0.3" "true" "$(echo "$score > 0.3" | bc -l | grep -q 1 && echo true || echo false)"
+assert_eq "High-signal score > 0.3" 1 $((score > 0.3))
 
 # Low-frequency old command should score poorly
 candidate_low="git config user.name|3|${one_week_ago}|3|0"
 _sage_score_candidate "$candidate_low" "/Users/user/project" "" "$now"
 score_low=${reply[1]}
 echo "  Low-signal candidate score: $score_low"
-assert_eq "Low-signal score < high-signal score" "true" "$(echo "$score_low < $score" | bc -l | grep -q 1 && echo true || echo false)"
+assert_eq "Low-signal score < high-signal score" 1 $((score_low < score))
 
 echo ""
 echo "==========================================="

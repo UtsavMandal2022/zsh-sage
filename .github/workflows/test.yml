@@ -31,7 +31,6 @@ jobs:
         run: |
           zsh --version
           sqlite3 --version
-          echo "bc: $(echo '1+1' | bc)"
 
       - name: Run DB tests
         run: ZSH_SAGE_NO_COPROC=1 zsh tests/test_db.sh
