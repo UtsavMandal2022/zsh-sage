@@ -3,6 +3,8 @@
 # Test: Database layer — creation, recording, querying, persistence
 #
 
+zmodload zsh/datetime
+
 set -uo pipefail
 
 TEST_DB="/tmp/sage-test-$$.db"
@@ -76,7 +78,7 @@ assert_eq "Re-init is safe" "true" "$([ -f $TEST_DB ] && echo true || echo false
 echo ""
 echo "=== Test: Recording Commands ==="
 
-now=$(date +%s)
+now=$EPOCHSECONDS
 
 _sage_db_record "git status" "/home/user/project" "" 0 "$now" "main"
 _sage_db_record "git commit -m 'fix bug'" "/home/user/project" "git status" 0 "$((now+1))" "main"
@@ -118,7 +120,8 @@ assert_eq "git status all succeeded" "2" "$git_status_success"
 echo ""
 echo "=== Test: Candidate Query (prefix match) ==="
 
-candidates=$(_sage_db_candidates "git" "/home/user/project")
+_sage_db_candidates "git" "/home/user/project"
+candidates="$REPLY"
 assert_contains "git status in candidates" "git status" "$candidates"
 assert_contains "git commit in candidates" "git commit" "$candidates"
 assert_contains "git push in candidates" "git push" "$candidates"
@@ -131,20 +134,24 @@ assert_eq "npm not in git prefix results" "0" "$npm_in_git"
 echo ""
 echo "=== Test: Directory-Specific Candidates ==="
 
-dir_candidates=$(_sage_db_candidates_dir "npm" "/home/user/webapp")
+_sage_db_candidates_dir "npm" "/home/user/webapp"
+dir_candidates="$REPLY"
 assert_contains "npm test in webapp dir" "npm test" "$dir_candidates"
 
-dir_candidates_wrong=$(_sage_db_candidates_dir "npm" "/home/user/project")
+_sage_db_candidates_dir "npm" "/home/user/project"
+dir_candidates_wrong="$REPLY"
 assert_empty "no npm in project dir" "$dir_candidates_wrong"
 
 # ─────────────────────────────────────────────────────────────────
 echo ""
 echo "=== Test: Sequence Score ==="
 
-seq_score=$(_sage_db_sequence_score "git commit" "git status")
+_sage_db_sequence_score "git commit" "git status"
+seq_score="$REPLY"
 assert_eq "git commit follows git status (score > 0)" "true" "$(echo "$seq_score > 0" | bc -l | grep -q 1 && echo true || echo false)"
 
-seq_score_zero=$(_sage_db_sequence_score "npm test" "git status")
+_sage_db_sequence_score "npm test" "git status"
+seq_score_zero="$REPLY"
 assert_eq "npm test doesn't follow git status" "true" "$(echo "$seq_score_zero == 0" | bc -l | grep -q 1 && echo true || echo false)"
 
 # ─────────────────────────────────────────────────────────────────

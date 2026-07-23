@@ -4,6 +4,8 @@
 # This test isolates each signal to ensure weights are effective
 #
 
+zmodload zsh/datetime
+
 set -uo pipefail
 
 TEST_DB="/tmp/sage-weight-test-$$.db"
@@ -37,7 +39,7 @@ assert_eq() {
     fi
 }
 
-now=$(date +%s)
+now=$EPOCHSECONDS
 
 # ─────────────────────────────────────────────────────────────────
 echo "=== Scenario 1: Frequency is the tiebreaker ==="
@@ -54,7 +56,8 @@ for i in {1..10}; do
     _sage_db_record "docker build --no-cache ." "/app" "cd /app" 0 "$now" "main"
 done
 
-result=$(_sage_rank_candidates "docker b" "/app" "cd /app")
+_sage_rank_candidates "docker b" "/app" "cd /app"
+result="$REPLY"
 assert_eq "Higher frequency wins" "docker build ." "$result"
 
 # ─────────────────────────────────────────────────────────────────
@@ -76,15 +79,18 @@ for i in {1..15}; do
     _sage_db_record "make test" "/project" "" 0 "$((now - 60))" "main"
 done
 
-result=$(_sage_rank_candidates "make " "/project" "")
+_sage_rank_candidates "make " "/project" ""
+result="$REPLY"
 echo "  Winner: $result"
 # With frequency weight 0.30 and recency 0.25, a month-old command
 # with 2x frequency should lose to a recent one
 
-score_build=$(_sage_score_candidate "make build|30|${one_month_ago}|30|0" "/project" "" "$now")
-score_test=$(_sage_score_candidate "make test|15|$((now - 60))|15|0" "/project" "" "$now")
-echo "  make build score: ${score_build%%|*}"
-echo "  make test  score: ${score_test%%|*}"
+_sage_score_candidate "make build|30|${one_month_ago}|30|0" "/project" "" "$now"
+score_build=${reply[1]}
+_sage_score_candidate "make test|15|$((now - 60))|15|0" "/project" "" "$now"
+score_test=${reply[1]}
+echo "  make build score: $score_build"
+echo "  make test  score: $score_test"
 assert_eq "Recent command wins over stale frequent one" "make test" "$result"
 
 # ─────────────────────────────────────────────────────────────────
@@ -107,12 +113,14 @@ for i in {1..5}; do
     _sage_db_record "npm start" "/webapp-v2" "" 0 "$((now - i * 30))" "dev"
 done
 
-result_v2=$(_sage_rank_candidates "npm start" "/webapp-v2" "")
+_sage_rank_candidates "npm start" "/webapp-v2" ""
+result_v2="$REPLY"
 echo "  In /webapp-v2: $result_v2"
 # npm start:dev should get a directory boost in /webapp-v2
 # but npm start has 4x global frequency... let's see what the weights do
 
-result_webapp=$(_sage_rank_candidates "npm start" "/webapp" "")
+_sage_rank_candidates "npm start" "/webapp" ""
+result_webapp="$REPLY"
 echo "  In /webapp: $result_webapp"
 assert_eq "npm start wins in /webapp (high dir freq)" "npm start" "$result_webapp"
 
@@ -132,10 +140,12 @@ for i in {1..20}; do
     _sage_db_record "git checkout dev" "/repo" "git pull" 0 "$((now - i * 60))" "main"
 done
 
-result_after_add=$(_sage_rank_candidates "git c" "/repo" "git add .")
+_sage_rank_candidates "git c" "/repo" "git add ."
+result_after_add="$REPLY"
 assert_eq "After 'git add .', commit wins" "git commit -m 'wip'" "$result_after_add"
 
-result_after_pull=$(_sage_rank_candidates "git c" "/repo" "git pull")
+_sage_rank_candidates "git c" "/repo" "git pull"
+result_after_pull="$REPLY"
 assert_eq "After 'git pull', checkout wins" "git checkout dev" "$result_after_pull"
 
 # ─────────────────────────────────────────────────────────────────
@@ -158,13 +168,16 @@ for i in {1..10}; do
     _sage_db_record "python run_old.py" "/code" "" 1 "$((now - i * 60))" ""
 done
 
-result=$(_sage_rank_candidates "python run" "/code" "")
+_sage_rank_candidates "python run" "/code" ""
+result="$REPLY"
 assert_eq "Reliable command beats flaky one" "python run.py" "$result"
 
-s1=$(_sage_score_candidate "python run.py|20|${now}|20|0" "/code" "" "$now")
-s2=$(_sage_score_candidate "python run_old.py|20|${now}|10|10" "/code" "" "$now")
-echo "  python run.py     score: ${s1%%|*} (100% success)"
-echo "  python run_old.py score: ${s2%%|*} (50% success)"
+_sage_score_candidate "python run.py|20|${now}|20|0" "/code" "" "$now"
+s1=${reply[1]}
+_sage_score_candidate "python run_old.py|20|${now}|10|10" "/code" "" "$now"
+s2=${reply[1]}
+echo "  python run.py     score: $s1 (100% success)"
+echo "  python run_old.py score: $s2 (50% success)"
 
 # ─────────────────────────────────────────────────────────────────
 echo ""
@@ -184,7 +197,8 @@ for i in {1..3}; do
 done
 
 # Default weights: frequency should win
-result_default=$(_sage_rank_candidates "kubectl get" "/ops" "")
+_sage_rank_candidates "kubectl get" "/ops" ""
+result_default="$REPLY"
 echo "  Default weights winner: $result_default"
 
 # Override: crank recency
@@ -194,7 +208,8 @@ ZSH_SAGE_W_DIRECTORY="0.05"
 ZSH_SAGE_W_SEQUENCE="0.05"
 ZSH_SAGE_W_SUCCESS="0.05"
 
-result_recency=$(_sage_rank_candidates "kubectl get" "/ops" "")
+_sage_rank_candidates "kubectl get" "/ops" ""
+result_recency="$REPLY"
 echo "  Recency-heavy winner: $result_recency"
 assert_eq "Recency-heavy weights favor recent cmd" "kubectl get nodes" "$result_recency"
 

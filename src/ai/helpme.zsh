@@ -42,8 +42,8 @@ alias helpme=hm
 
 _sage_helpme_ask() {
     local question="$1"
-    local context
-    context=$(_sage_helpme_context)
+    _sage_helpme_context
+    local context="$REPLY"
 
     local prompt="You are a shell command expert. Given the context below, suggest the best shell command to accomplish the user's goal. Return ONLY the command — no explanation, no markdown, no quotes around it. Only if the input is completely unrelated to computers, shells, or commands (e.g. 'I love you', 'what is the meaning of life', 'tell me a joke'), respond with exactly: NO_COMMAND — otherwise always suggest a command.
 
@@ -53,8 +53,8 @@ User's question: ${question}
 
 Command:"
 
-    local result
-    result=$(_sage_helpme_call "$prompt")
+    _sage_helpme_call "$prompt"
+    local result="$REPLY"
 
     if [[ -z "$result" ]]; then
         echo "  Could not get a suggestion."
@@ -76,8 +76,8 @@ Command:"
 
 _sage_helpme_fix() {
     # Get last command and exit code from DB
-    local last_row
-    last_row=$(_sage_db_query "SELECT command, exit_code FROM commands ORDER BY id DESC LIMIT 1;")
+    _sage_db_query "SELECT command, exit_code FROM commands ORDER BY id DESC LIMIT 1;"
+    local last_row="$REPLY"
 
     if [[ -z "$last_row" ]]; then
         echo "  No command history yet — nothing to fix."
@@ -94,8 +94,8 @@ _sage_helpme_fix() {
         return 0
     fi
 
-    local context
-    context=$(_sage_helpme_context)
+    _sage_helpme_context
+    local context="$REPLY"
 
     local prompt="You are a shell command expert. The user's last command failed. Analyze the error and suggest the corrected command. Return ONLY the corrected command — no explanation, no markdown, no quotes around it.
 
@@ -106,8 +106,8 @@ Exit code: ${last_exit}
 
 Corrected command:"
 
-    local result
-    result=$(_sage_helpme_call "$prompt")
+    _sage_helpme_call "$prompt"
+    local result="$REPLY"
 
     if [[ -z "$result" ]]; then
         echo "  Could not get a suggestion."
@@ -132,17 +132,13 @@ _sage_helpme_context() {
         git_branch=$(command git symbolic-ref --short HEAD 2>/dev/null)
     fi
 
-    local recent_cmds=""
-    recent_cmds=$(_sage_db_query "SELECT command FROM commands ORDER BY id DESC LIMIT 10;")
-
-    cat <<EOF
-Working directory: ${dir}
-OS: ${os_info}
-Shell: zsh ${ZSH_VERSION}
-Git branch: ${git_branch:-none}
-Recent commands:
-${recent_cmds}
-EOF
+    _sage_db_query "SELECT command FROM commands ORDER BY id DESC LIMIT 10;"
+    local recent_cmds="$REPLY"
+    REPLY+="Working directory: ${dir}"$'\n'
+    REPLY+="OS: ${os_info}"$'\n'
+    REPLY+="Shell: zsh ${ZSH_VERSION}"$'\n'
+    REPLY+="Git branch: ${git_branch:-none}"$'\n'
+    REPLY+="Recent commands:${recent_cmds}"$'\n'
 }
 
 # ── Claude Code call (synchronous, with spinner) ─────────────────
@@ -169,15 +165,14 @@ _sage_helpme_call() {
     fi
 
     # Strip markdown formatting
-    raw=$(_sage_helpme_strip "$raw")
-
-    printf '%s' "$raw"
+    _sage_helpme_strip "$raw"
 }
 
 # ── Strip markdown formatting ────────────────────────────────────
 
 _sage_helpme_strip() {
-    printf '%s' "$1" | python3 -c "
+    # This doesn't actually reduce forkage, but unifies call signatures.
+    REPLY=$(printf '%s' "$1" | python3 -c "
 import sys
 text = sys.stdin.read().strip()
 if text.startswith('\`\`\`') and text.endswith('\`\`\`'):
@@ -191,7 +186,7 @@ if text.startswith('\`') and text.endswith('\`') and text.count('\`') == 2:
 if (text.startswith('\"') and text.endswith('\"')) or (text.startswith(\"'\") and text.endswith(\"'\")):
     text = text[1:-1]
 print(text)
-" 2>/dev/null
+" 2>/dev/null)
 }
 
 # ── Spinner ──────────────────────────────────────────────────────
@@ -281,11 +276,11 @@ _sage_helpme_display() {
 
     # Action prompt
     printf "  ${c}Run it?${r} ${d}[y/N/e(dit)]${r} "
-    local reply=""
-    read -s -k 1 reply
+    local answer=""
+    read -s -k 1 -u 0 answer
     echo ""
 
-    case "${reply}" in
+    case "${answer}" in
         y|Y)
             echo ""
             echo "  ${d}>${r} ${cmd}"

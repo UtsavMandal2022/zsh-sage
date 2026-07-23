@@ -27,22 +27,22 @@ _sage_strategy_local() {
         local now=$EPOCHSECONDS
 
         if (( now - cache_time < _SAGE_CACHE_TTL )); then
-            echo "$cache_val"
+            REPLY="$cache_val"
             return
         fi
     fi
 
     # Cache miss — query and rank
-    local result
-    result=$(_sage_rank_candidates "$prefix" "$dir" "$prev_cmd")
-
+    _sage_rank_candidates "$prefix" "$dir" "$prev_cmd"
+    local result="$REPLY"
+    
     if [[ -n "$result" ]]; then
         # Store in cache
         local now=$EPOCHSECONDS
         _SAGE_PREFIX_CACHE[$cache_key]="${now}|${result}"
     fi
 
-    echo "$result"
+    REPLY="$result"
 }
 
 # Clear stale cache entries (called periodically)

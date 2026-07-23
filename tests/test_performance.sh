@@ -28,10 +28,10 @@ trap cleanup EXIT
 
 # Measure time in milliseconds using zsh's high-res timer
 time_ms() {
-    local start=$EPOCHREALTIME
+    local -F start=$EPOCHREALTIME
     eval "$@" > /dev/null 2>&1
-    local end=$EPOCHREALTIME
-    echo "($end - $start) * 1000" | bc -l
+    local -F end=$EPOCHREALTIME
+    REPLY=$(( (end - start) * 1000 ))
 }
 
 # Generate realistic commands
@@ -60,13 +60,13 @@ DIRS=(
 
 seed_database() {
     local count="$1"
-    local now=$(date +%s)
+    local now=$EPOCHSECONDS
     local sql=""
     local i cmd_idx dir_idx cmd dir prev_cmd exit_code ts
 
     echo -n "  Seeding $count entries... "
 
-    for i in $(seq 1 $count); do
+    for i in {1..$count}; do
         cmd_idx=$(( (RANDOM % ${#COMMANDS[@]}) + 1 ))
         dir_idx=$(( (RANDOM % ${#DIRS[@]}) + 1 ))
         cmd="${COMMANDS[$cmd_idx]}"
@@ -75,9 +75,9 @@ seed_database() {
         exit_code=$(( RANDOM % 10 == 0 ? 1 : 0 ))  # 10% failure rate
         ts=$(( now - RANDOM ))
 
-        local e_cmd="$(_sage_sql_escape "$cmd")"
-        local e_dir="$(_sage_sql_escape "$dir")"
-        local e_prev="$(_sage_sql_escape "$prev_cmd")"
+        _sage_sql_escape "$cmd"; local e_cmd="$REPLY"
+        _sage_sql_escape "$dir"; local e_dir="$REPLY"
+        _sage_sql_escape "$prev_cmd"; local e_prev="$REPLY"
 
         sql+="INSERT INTO commands (command, directory, prev_command, exit_code, timestamp, git_branch)
 VALUES ('${e_cmd}', '${e_dir}', '${e_prev}', ${exit_code}, ${ts}, 'main');
@@ -122,7 +122,8 @@ benchmark_operation() {
     local measurements=""
 
     for i in $(seq 1 $runs); do
-        t=$(time_ms "$@")
+        time_ms "$@"
+        t="$REPLY"
         measurements+="${t}\n"
     done
 
@@ -177,7 +178,7 @@ for size in 1000 5000 10000; do
     benchmark_operation "Sequence score lookup" \
         '_sage_db_sequence_score "git commit" "git add ."'
 
-    local ts_now=$(date +%s)
+    local ts_now=$EPOCHSECONDS
     benchmark_operation "Score single candidate" \
         "_sage_score_candidate 'git status|50|${ts_now}|45|5' '/Users/user/project-a' 'git add .' '${ts_now}'"
 
