@@ -4,6 +4,8 @@
 # at various history sizes (1k, 5k, 10k entries)
 #
 
+zmodload zsh/datetime
+
 set -uo pipefail
 
 TEST_DB="/tmp/sage-perf-test-$$.db"
@@ -23,8 +25,6 @@ source "$SCRIPT_DIR/../src/strategies/local.zsh"
 
 cleanup() { rm -f "$TEST_DB"; }
 trap cleanup EXIT
-
-zmodload zsh/datetime
 
 # Measure time in milliseconds using zsh's high-res timer
 time_ms() {

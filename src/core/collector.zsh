@@ -2,6 +2,8 @@
 # Collector — hooks into shell lifecycle to record commands
 #
 
+zmodload zsh/datetime
+
 typeset -g _SAGE_LAST_COMMAND=""
 typeset -g _SAGE_PREV_COMMAND=""
 typeset -g _SAGE_COMMAND_START=0
@@ -9,7 +11,7 @@ typeset -g _SAGE_COMMAND_START=0
 # Called before a command executes
 _sage_collector_preexec() {
     _SAGE_LAST_COMMAND="$1"
-    _SAGE_COMMAND_START=$(date +%s)
+    _SAGE_COMMAND_START=$EPOCHSECONDS
 
     # Detect implicit accept: user typed a command that matches (or
     # prefix-extends) the suggestion we were showing. If so, record it
@@ -52,7 +54,7 @@ _sage_collector_precmd() {
     # Skip commands that start with space (private commands)
     [[ "$_SAGE_LAST_COMMAND" == " "* ]] && return
 
-    local timestamp=$(date +%s)
+    local timestamp=$EPOCHSECONDS
     local dir="$PWD"
     local git_branch=""
 

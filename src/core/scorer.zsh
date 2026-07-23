@@ -14,6 +14,8 @@
 # Weights are adjusted dynamically by prefix length (see _sage_adjust_weights).
 #
 
+zmodload zsh/datetime
+
 # Adjust scoring weights based on prefix length.
 # The intuition: what the user needs changes as they type more.
 #   Short prefix (1-3 chars): they're exploring — frequency matters most
@@ -148,7 +150,7 @@ _sage_rank_candidates() {
     like_prefix="${like_prefix//_/\$_}"
 
     local now
-    now=$(date +%s)
+    now=$EPOCHSECONDS
 
     # Weights: either prefix-length-aware or straight from profile
     local wf wr wd ws wk
@@ -264,7 +266,7 @@ _sage_rank_with_score() {
     like_prefix="${like_prefix//_/\$_}"
 
     local now
-    now=$(date +%s)
+    now=$EPOCHSECONDS
 
     # Weights: either prefix-length-aware or straight from profile
     local wf wr wd ws wk
@@ -378,7 +380,7 @@ _sage_rank_top_n() {
     like_prefix="${like_prefix//_/\$_}"
 
     local now
-    now=$(date +%s)
+    now=$EPOCHSECONDS
 
     local wf wr wd ws wk
     if [[ "${ZSH_SAGE_PREFIX_AWARE_WEIGHTS:-true}" == "true" ]]; then

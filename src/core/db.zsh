@@ -5,6 +5,8 @@
 # The coproc stays alive for the shell session (~1-2MB RAM, 0% idle CPU).
 #
 
+zmodload zsh/datetime
+
 typeset -g _SAGE_COPROC_ALIVE=0
 typeset -g _SAGE_EOF_SENTINEL="__SAGE_e0f_7d2b9k__"
 
@@ -217,7 +219,7 @@ _sage_sql_escape() {
 # Record an accepted suggestion with its signal breakdown
 # Args: freq_contrib recency_contrib dir_contrib seq_contrib success_contrib
 _sage_db_record_accept() {
-    local ts=$(date +%s)
+    local ts=$EPOCHSECONDS
     _sage_db_exec "INSERT INTO weight_accepts
 (timestamp, freq_contrib, recency_contrib, dir_contrib, seq_contrib, success_contrib)
 VALUES (${ts}, ${1:-0}, ${2:-0}, ${3:-0}, ${4:-0}, ${5:-0});"
@@ -328,7 +330,7 @@ _sage_db_import_history() {
         else
             # Plain command (no timestamp)
             cmd="$line"
-            ts=$(date +%s)
+            ts=$EPOCHSECONDS
         fi
 
         # Skip empty, very short, or multiline continuation
