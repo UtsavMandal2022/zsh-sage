@@ -20,6 +20,16 @@ _sage_color() {
     fi
 }
 
+# Render a weight (0-1) as a 20-wide bar of |, right-padded with spaces
+_sage_weight_bar() {
+    local -F weight="$1"
+    local -i bar_len
+    (( bar_len = weight * 20 ))
+    (( bar_len < 0 )) && bar_len=0
+    (( bar_len > 20 )) && bar_len=20
+    REPLY="${(r:20:: :)${(l:$bar_len::|:):-}}"
+}
+
 _sage_banner() {
     local g r c y d b m
     _sage_color g green; _sage_color r reset; _sage_color c cyan
@@ -126,11 +136,21 @@ _sage_cli_status() {
     _sage_color y yellow; _sage_color d dim; _sage_color b bold
     _sage_color m magenta
 
-    local cmd_count stat_count db_size
-
-    cmd_count=$(_sage_db_query "SELECT COUNT(*) FROM commands;")
-    stat_count=$(_sage_db_query "SELECT COUNT(*) FROM stats;")
+    _sage_db_query "SELECT COUNT(*) FROM commands;"
+    local cmd_count="$REPLY"
+    _sage_db_query "SELECT COUNT(*) FROM stats;"
+    local stat_count="$REPLY"
+    local db_size
     db_size=$(du -h "$ZSH_SAGE_DB" 2>/dev/null | cut -f1)
+
+    local ai_status="${d}no${r}"
+    [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]] && ai_status="${g}yes${r}"
+
+    _sage_weight_bar "$ZSH_SAGE_W_FREQUENCY"; local bar_freq="$REPLY"
+    _sage_weight_bar "$ZSH_SAGE_W_RECENCY"; local bar_recency="$REPLY"
+    _sage_weight_bar "$ZSH_SAGE_W_DIRECTORY"; local bar_dir="$REPLY"
+    _sage_weight_bar "$ZSH_SAGE_W_SEQUENCE"; local bar_seq="$REPLY"
+    _sage_weight_bar "$ZSH_SAGE_W_SUCCESS"; local bar_success="$REPLY"
 
     _sage_banner
     cat <<EOF
@@ -140,14 +160,14 @@ ${b}STATUS${r}
   ${d}Database${r}        $ZSH_SAGE_DB ${d}($db_size)${r}
   ${d}Commands logged${r} ${c}${cmd_count:-0}${r}
   ${d}Unique commands${r} ${c}${stat_count:-0}${r}
-  ${d}AI enabled${r}      $(if [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]]; then echo "${g}yes${r}"; else echo "${d}no${r}"; fi)
+  ${d}AI enabled${r}      $ai_status
 
 ${b}WEIGHTS${r}
-  ${m}frequency${r}  $ZSH_SAGE_W_FREQUENCY  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_FREQUENCY * 20 / 1" | bc)))")${r}
-  ${m}recency${r}    $ZSH_SAGE_W_RECENCY  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_RECENCY * 20 / 1" | bc)))")${r}
-  ${m}directory${r}   $ZSH_SAGE_W_DIRECTORY  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_DIRECTORY * 20 / 1" | bc)))")${r}
-  ${m}sequence${r}    $ZSH_SAGE_W_SEQUENCE  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_SEQUENCE * 20 / 1" | bc)))")${r}
-  ${m}success${r}     $ZSH_SAGE_W_SUCCESS  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_SUCCESS * 20 / 1" | bc)))")${r}
+  ${m}frequency${r}  $ZSH_SAGE_W_FREQUENCY  ${d}$bar_freq${r}
+  ${m}recency${r}    $ZSH_SAGE_W_RECENCY  ${d}$bar_recency${r}
+  ${m}directory${r}   $ZSH_SAGE_W_DIRECTORY  ${d}$bar_dir${r}
+  ${m}sequence${r}    $ZSH_SAGE_W_SEQUENCE  ${d}$bar_seq${r}
+  ${m}success${r}     $ZSH_SAGE_W_SUCCESS  ${d}$bar_success${r}
 EOF
 }
 
@@ -211,10 +231,12 @@ WHERE TRIM(command) = command
   AND LENGTH(TRIM(command)) > 1
   AND command NOT LIKE '%' || CHAR(92)
 ORDER BY frequency DESC LIMIT 15;"
+    echo "$REPLY"
     echo ""
     echo "${d}───────────────────────────────────────────${r}"
 
-    local total=$(_sage_db_query "SELECT COUNT(*) FROM commands;")
+    _sage_db_query "SELECT COUNT(*) FROM commands;"
+    local total="$REPLY"
     echo "  ${d}Total commands recorded:${r} ${c}${total:-0}${r}"
     echo ""
 }
@@ -229,9 +251,8 @@ _sage_cli_weights() {
 
     # Reset: wipe what zsh-sage has learned about your habits
     if [[ "$sub" == "reset" ]]; then
-        local count
-        count=$(_sage_db_query "SELECT COUNT(*) FROM weight_accepts;")
-        : ${count:=0}
+        _sage_db_query "SELECT COUNT(*) FROM weight_accepts;"
+        local -i count=${REPLY:-0}
 
         if (( count == 0 )); then
             echo "Nothing to reset — zsh-sage hasn't learned anything yet."
@@ -240,9 +261,9 @@ _sage_cli_weights() {
 
         echo "${y}This will forget ${count} suggestions zsh-sage has learned from.${r}"
         echo -n "Proceed? [y/N] "
-        local reply
-        read -r reply
-        if [[ "$reply" == "y" || "$reply" == "Y" ]]; then
+        local answer
+        read -r answer
+        if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
             _sage_db_exec "DELETE FROM weight_accepts;"
             echo "${g}Done.${r} zsh-sage has forgotten everything it learned."
         else
@@ -255,9 +276,8 @@ _sage_cli_weights() {
     echo "${b}LEARNING FROM YOUR HABITS${r}"
     echo "${d}───────────────────────────────────────────${r}"
 
-    local total_accepts
-    total_accepts=$(_sage_db_query "SELECT COUNT(*) FROM weight_accepts;")
-    : ${total_accepts:=0}
+    _sage_db_query "SELECT COUNT(*) FROM weight_accepts;"
+    local -i total_accepts=${REPLY:-0}
 
     echo "  ${d}Suggestions you accepted:${r} ${c}${total_accepts}${r}"
     echo ""
@@ -283,16 +303,16 @@ _sage_cli_weights() {
     # Compute observed win shares from accept data (last 500)
     echo "${b}WHAT'S ACTUALLY HELPING YOU${r} ${d}(from your last ${total_accepts} accepts, capped at 500)${r}"
 
-    local shares
-    shares=$(_sage_db_query "
+    _sage_db_query "
 SELECT
     ROUND(SUM(freq_contrib) / NULLIF(SUM(freq_contrib + recency_contrib + dir_contrib + seq_contrib + success_contrib), 0), 3) as freq_share,
     ROUND(SUM(recency_contrib) / NULLIF(SUM(freq_contrib + recency_contrib + dir_contrib + seq_contrib + success_contrib), 0), 3) as rec_share,
     ROUND(SUM(dir_contrib) / NULLIF(SUM(freq_contrib + recency_contrib + dir_contrib + seq_contrib + success_contrib), 0), 3) as dir_share,
     ROUND(SUM(seq_contrib) / NULLIF(SUM(freq_contrib + recency_contrib + dir_contrib + seq_contrib + success_contrib), 0), 3) as seq_share,
     ROUND(SUM(success_contrib) / NULLIF(SUM(freq_contrib + recency_contrib + dir_contrib + seq_contrib + success_contrib), 0), 3) as succ_share
-FROM (SELECT * FROM weight_accepts ORDER BY timestamp DESC LIMIT 500);")
-
+FROM (SELECT * FROM weight_accepts ORDER BY timestamp DESC LIMIT 500);"
+    local shares="$REPLY"
+    
     if [[ -n "$shares" ]]; then
         local -a share_fields
         share_fields=("${(@s:|:)shares}")
@@ -332,10 +352,10 @@ _sage_cli_ai() {
         echo "  ${d}Usage:${r}    ${c}hm${r} <question>  or  ${c}hm${r} to fix last failed command"
         echo ""
         echo -n "  ${b}Disable AI?${r} ${d}[y/N]${r} "
-        local reply=""
-        read -s -k 1 reply
+        local answer=""
+        read -s -k 1 answer
         echo ""
-        if [[ "$reply" == "y" || "$reply" == "Y" ]]; then
+        if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
             _sage_ai_set_enabled false
             export ZSH_SAGE_AI_ENABLED=false
             # Restore the stub in the current shell so `hm` reflects disabled state immediately.
@@ -375,11 +395,11 @@ _sage_cli_ai() {
     echo "  ${g}Claude Code detected${r} ${d}(${claude_ver})${r}"
     echo ""
     echo -n "  ${b}Enable AI?${r} ${d}[Y/n]${r} "
-    local reply=""
-    read -s -k 1 reply
+    local answer=""
+    read -s -k 1 answer
     echo ""
 
-    if [[ "$reply" == "n" || "$reply" == "N" ]]; then
+    if [[ "$answer" == "n" || "$answer" == "N" ]]; then
         echo "  ${d}Cancelled. Run${r} ${c}zsage ai${r} ${d}anytime to enable.${r}"
         echo ""
         return 0

@@ -4,17 +4,19 @@
 # at various history sizes (1k, 5k, 10k entries)
 #
 
+zmodload zsh/datetime
+
 set -uo pipefail
 
 TEST_DB="/tmp/sage-perf-test-$$.db"
 
-export ZSH_SAGE_DB="$TEST_DB"
-export ZSH_SAGE_MAX_CANDIDATES=10
-export ZSH_SAGE_W_FREQUENCY="0.30"
-export ZSH_SAGE_W_RECENCY="0.25"
-export ZSH_SAGE_W_DIRECTORY="0.20"
-export ZSH_SAGE_W_SEQUENCE="0.15"
-export ZSH_SAGE_W_SUCCESS="0.10"
+typeset -gx ZSH_SAGE_DB="$TEST_DB"
+typeset -gxi ZSH_SAGE_MAX_CANDIDATES=10
+typeset -gxF ZSH_SAGE_W_FREQUENCY=0.30
+typeset -gxF ZSH_SAGE_W_RECENCY=0.25
+typeset -gxF ZSH_SAGE_W_DIRECTORY=0.20
+typeset -gxF ZSH_SAGE_W_SEQUENCE=0.15
+typeset -gxF ZSH_SAGE_W_SUCCESS=0.10
 
 SCRIPT_DIR="$(dirname $0)"
 source "$SCRIPT_DIR/../src/core/db.zsh"
@@ -24,14 +26,12 @@ source "$SCRIPT_DIR/../src/strategies/local.zsh"
 cleanup() { rm -f "$TEST_DB"; }
 trap cleanup EXIT
 
-zmodload zsh/datetime
-
 # Measure time in milliseconds using zsh's high-res timer
 time_ms() {
-    local start=$EPOCHREALTIME
+    local -F start=$EPOCHREALTIME
     eval "$@" > /dev/null 2>&1
-    local end=$EPOCHREALTIME
-    echo "($end - $start) * 1000" | bc -l
+    local -F end=$EPOCHREALTIME
+    REPLY=$(( (end - start) * 1000 ))
 }
 
 # Generate realistic commands
@@ -59,14 +59,15 @@ DIRS=(
 )
 
 seed_database() {
-    local count="$1"
-    local now=$(date +%s)
+    local -i count="$1"
+    local -i now=$EPOCHSECONDS
     local sql=""
-    local i cmd_idx dir_idx cmd dir prev_cmd exit_code ts
+    local -i i cmd_idx dir_idx exit_code ts
+    local cmd dir prev_cmd 
 
     echo -n "  Seeding $count entries... "
 
-    for i in $(seq 1 $count); do
+    for i in {1..$count}; do
         cmd_idx=$(( (RANDOM % ${#COMMANDS[@]}) + 1 ))
         dir_idx=$(( (RANDOM % ${#DIRS[@]}) + 1 ))
         cmd="${COMMANDS[$cmd_idx]}"
@@ -75,9 +76,9 @@ seed_database() {
         exit_code=$(( RANDOM % 10 == 0 ? 1 : 0 ))  # 10% failure rate
         ts=$(( now - RANDOM ))
 
-        local e_cmd="$(_sage_sql_escape "$cmd")"
-        local e_dir="$(_sage_sql_escape "$dir")"
-        local e_prev="$(_sage_sql_escape "$prev_cmd")"
+        _sage_sql_escape "$cmd"; local e_cmd="$REPLY"
+        _sage_sql_escape "$dir"; local e_dir="$REPLY"
+        _sage_sql_escape "$prev_cmd"; local e_prev="$REPLY"
 
         sql+="INSERT INTO commands (command, directory, prev_command, exit_code, timestamp, git_branch)
 VALUES ('${e_cmd}', '${e_dir}', '${e_prev}', ${exit_code}, ${ts}, 'main');
@@ -109,39 +110,32 @@ ON CONFLICT(command, directory) DO UPDATE SET
     echo "done ($total_cmds command rows, $total_stats unique stats)"
 }
 
-typeset -g _BENCH_LAST_AVG=0
+typeset -gi _BENCH_LAST_AVG=0
 
 benchmark_operation() {
     local label="$1"
     shift
-    local runs=5
-    local i t
-    local sum=0
-    local min=999999
-    local max=0
-    local measurements=""
+    local -i runs=5
+    local -a measurements=()
 
-    for i in $(seq 1 $runs); do
-        t=$(time_ms "$@")
-        measurements+="${t}\n"
+    local -i i
+    for i in {1..$runs}; do
+        time_ms "$@"
+        measurements+=($REPLY)
     done
 
-    # Use bc for all float math
-    local stats
-    stats=$(printf "$measurements" | python3 -c "
-import sys
-vals = [float(l.strip()) for l in sys.stdin if l.strip()]
-if vals:
-    print(f'{min(vals):.1f} {sum(vals)/len(vals):.1f} {max(vals):.1f}')
-else:
-    print('0.0 0.0 0.0')
-")
+    local -F min_v=${measurements[1]}
+    local -F max_v=${measurements[1]}
+    local -F sum=${measurements[1]}
+    local -F t
+    for t in ${measurements[2,-1]}; do
+        (( t < min_v )) && min_v=$t
+        (( t > max_v )) && max_v=$t
+        (( sum += t ))
+    done
+    local -F avg_v=$(( sum / $#measurements ))
 
-    local min_v="${stats%% *}"; stats="${stats#* }"
-    local avg_v="${stats%% *}"
-    local max_v="${stats#* }"
-
-    printf "  %-40s  min:%7sms  avg:%7sms  max:%7sms\n" "$label" "$min_v" "$avg_v" "$max_v"
+    printf "  %-40s  min:%7.1fms  avg:%7.1fms  max:%7.1fms\n" "$label" "$min_v" "$avg_v" "$max_v"
     _BENCH_LAST_AVG="${avg_v%%.*}"  # Integer for comparison
 }
 
@@ -177,7 +171,7 @@ for size in 1000 5000 10000; do
     benchmark_operation "Sequence score lookup" \
         '_sage_db_sequence_score "git commit" "git add ."'
 
-    local ts_now=$(date +%s)
+    local ts_now=$EPOCHSECONDS
     benchmark_operation "Score single candidate" \
         "_sage_score_candidate 'git status|50|${ts_now}|45|5' '/Users/user/project-a' 'git add .' '${ts_now}'"
 

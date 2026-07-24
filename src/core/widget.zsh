@@ -15,46 +15,34 @@ typeset -g _SAGE_LAST_HIGHLIGHT=""
 
 # Cached per-signal contributions for the currently shown suggestion
 # Used by the collector to record accepts with their signal breakdown
-typeset -g _SAGE_CURRENT_FREQ_CONTRIB=0
-typeset -g _SAGE_CURRENT_REC_CONTRIB=0
-typeset -g _SAGE_CURRENT_DIR_CONTRIB=0
-typeset -g _SAGE_CURRENT_SEQ_CONTRIB=0
-typeset -g _SAGE_CURRENT_SUCC_CONTRIB=0
+typeset -gF _SAGE_CURRENT_FREQ_CONTRIB=0
+typeset -gF _SAGE_CURRENT_REC_CONTRIB=0
+typeset -gF _SAGE_CURRENT_DIR_CONTRIB=0
+typeset -gF _SAGE_CURRENT_SEQ_CONTRIB=0
+typeset -gF _SAGE_CURRENT_SUCC_CONTRIB=0
 
 # Cycle state — populated on first Ctrl+Space, rotated on subsequent presses
 typeset -ga _SAGE_CYCLE_RESULTS=()     # array of "score|command" lines
-typeset -g  _SAGE_CYCLE_INDEX=0        # current position in the cycle
+typeset -gi  _SAGE_CYCLE_INDEX=0        # current position in the cycle
 typeset -g  _SAGE_CYCLE_PREFIX=""       # the prefix these results are for
 
 # Confidence color thresholds (256-color)
 typeset -g ZSH_SAGE_COLOR_HIGH="${ZSH_SAGE_COLOR_HIGH:-108}"    # sage green
 typeset -g ZSH_SAGE_COLOR_MED="${ZSH_SAGE_COLOR_MED:-245}"      # medium grey
 typeset -g ZSH_SAGE_COLOR_LOW="${ZSH_SAGE_COLOR_LOW:-240}"      # faint grey
-typeset -g ZSH_SAGE_CONFIDENCE_HIGH="${ZSH_SAGE_CONFIDENCE_HIGH:-0.45}"
-typeset -g ZSH_SAGE_CONFIDENCE_LOW="${ZSH_SAGE_CONFIDENCE_LOW:-0.20}"
+typeset -gF ZSH_SAGE_CONFIDENCE_HIGH="${ZSH_SAGE_CONFIDENCE_HIGH:-0.45}"
+typeset -gF ZSH_SAGE_CONFIDENCE_LOW="${ZSH_SAGE_CONFIDENCE_LOW:-0.20}"
 
 # Map a score (0-1) to a highlight style string
 _sage_confidence_style() {
-    local score="$1"
+    local -F score="$1"
 
-    # Integer math: score * 100 to avoid bc
-    # Pad decimals to 2 digits: "0.7" → "70", "0.27" → "27", "0.511" → "51"
-    local score_int=${${score%%.*}:-0}
-    local score_dec="${score#*.}00"
-    score_dec="${score_dec:0:2}"
-    local score_100=$(( ${score_int:-0} * 100 + ${score_dec} ))
-
-    local high_dec="${ZSH_SAGE_CONFIDENCE_HIGH#*.}00"
-    local high_100=$(( ${ZSH_SAGE_CONFIDENCE_HIGH%%.*} * 100 + ${high_dec:0:2} ))
-    local low_dec="${ZSH_SAGE_CONFIDENCE_LOW#*.}00"
-    local low_100=$(( ${ZSH_SAGE_CONFIDENCE_LOW%%.*} * 100 + ${low_dec:0:2} ))
-
-    if (( score_100 >= high_100 )); then
-        echo "fg=${ZSH_SAGE_COLOR_HIGH}"
-    elif (( score_100 >= low_100 )); then
-        echo "fg=${ZSH_SAGE_COLOR_MED}"
+    if (( score >= ZSH_SAGE_CONFIDENCE_HIGH )); then
+        REPLY="fg=${ZSH_SAGE_COLOR_HIGH}"
+    elif (( score >= ZSH_SAGE_CONFIDENCE_LOW )); then
+        REPLY="fg=${ZSH_SAGE_COLOR_MED}"
     else
-        echo "fg=${ZSH_SAGE_COLOR_LOW}"
+        REPLY="fg=${ZSH_SAGE_COLOR_LOW}"
     fi
 }
 
@@ -122,8 +110,8 @@ _sage_update_suggestion() {
     fi
 
     # Get best suggestion with score and signal breakdown
-    local result
-    result=$(_sage_rank_with_score "$prefix" "$PWD" "$_SAGE_PREV_COMMAND")
+    _sage_rank_with_score "$prefix" "$PWD" "$_SAGE_PREV_COMMAND"
+    local result="$REPLY"
 
     if [[ -n "$result" ]]; then
         # Split pipe-delimited result:
@@ -145,9 +133,8 @@ _sage_update_suggestion() {
 
             POSTDISPLAY="${suggestion#$prefix}"
 
-            local style
-            style=$(_sage_confidence_style "$score")
-            _sage_highlight_apply "$style"
+            _sage_confidence_style "$score"
+            _sage_highlight_apply "$REPLY"
             return
         fi
     fi
@@ -272,16 +259,8 @@ _sage_cycle_widget() {
         _SAGE_CYCLE_PREFIX="$prefix"
         _SAGE_CYCLE_INDEX=0
 
-        local raw
-        raw=$(_sage_rank_top_n "$prefix" "$PWD" "$_SAGE_PREV_COMMAND" "${ZSH_SAGE_CYCLE_COUNT:-8}")
-
-        _SAGE_CYCLE_RESULTS=()
-        if [[ -n "$raw" ]]; then
-            local line
-            while IFS= read -r line; do
-                [[ -n "$line" ]] && _SAGE_CYCLE_RESULTS+=("$line")
-            done <<< "$raw"
-        fi
+        _sage_rank_top_n "$prefix" "$PWD" "$_SAGE_PREV_COMMAND" "${ZSH_SAGE_CYCLE_COUNT:-8}"
+        _SAGE_CYCLE_RESULTS=($reply)
 
         # If only one result (same as the default ghost), nothing to cycle
         if (( ${#_SAGE_CYCLE_RESULTS} <= 1 )); then
@@ -314,9 +293,8 @@ _sage_cycle_widget() {
         _SAGE_CURRENT_SEQ_CONTRIB=0
         _SAGE_CURRENT_SUCC_CONTRIB=0
 
-        local style
-        style=$(_sage_confidence_style "$score")
-        _sage_highlight_apply "$style"
+        _sage_confidence_style "$score"
+        _sage_highlight_apply "$REPLY"
 
         # Show position indicator
         zle -M "suggestion ${_SAGE_CYCLE_INDEX}/${#_SAGE_CYCLE_RESULTS}"

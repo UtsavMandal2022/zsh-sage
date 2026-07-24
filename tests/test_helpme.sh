@@ -6,6 +6,8 @@
 # and markdown stripping. Claude API calls are mocked to avoid real API usage.
 #
 
+zmodload zsh/datetime
+
 set -uo pipefail
 
 SCRIPT_DIR="$(dirname $0)"
@@ -125,11 +127,12 @@ source "$SCRIPT_DIR/../src/ai/helpme.zsh"
 
 # Seed some commands
 _sage_db_exec "INSERT INTO commands (command, directory, exit_code, timestamp)
-VALUES ('git status', '$PWD', 0, $(date +%s));"
+VALUES ('git status', '$PWD', 0, $EPOCHSECONDS);"
 _sage_db_exec "INSERT INTO commands (command, directory, exit_code, timestamp)
-VALUES ('npm test', '$PWD', 1, $(date +%s));"
+VALUES ('npm test', '$PWD', 1, $EPOCHSECONDS);"
 
-context=$(_sage_helpme_context)
+_sage_helpme_context
+context="$REPLY"
 
 assert_contains "context includes PWD" "$PWD" "$context"
 assert_contains "context includes OS" "$(uname -s)" "$context"
@@ -159,7 +162,7 @@ assert_contains "fix says no history" "No command history" "$output"
 
 # Test: last command succeeded
 _sage_db_exec "INSERT INTO commands (command, directory, exit_code, timestamp)
-VALUES ('ls', '$PWD', 0, $(date +%s));"
+VALUES ('ls', '$PWD', 0, $EPOCHSECONDS);"
 
 output=$(_sage_helpme_fix 2>&1)
 assert_exit "fix returns 0 when last command succeeded" "0" "$?"
@@ -167,10 +170,10 @@ assert_contains "fix says nothing to fix" "nothing to fix" "$output"
 
 # Test: last command failed — check it tries to call claude
 _sage_db_exec "INSERT INTO commands (command, directory, exit_code, timestamp)
-VALUES ('git push origin main', '$PWD', 1, $(date +%s));"
+VALUES ('git push origin main', '$PWD', 1, $EPOCHSECONDS);"
 
 # Mock _sage_helpme_call to avoid real API
-_sage_helpme_call() { echo "git pull --rebase origin main"; }
+_sage_helpme_call() { REPLY="git pull --rebase origin main"; }
 _sage_helpme_display() { echo "DISPLAY:$1"; }
 
 output=$(_sage_helpme_fix 2>&1)
@@ -194,19 +197,19 @@ source "$SCRIPT_DIR/../src/ai/helpme.zsh"
 export ZSH_SAGE_AI_ENABLED=true
 
 # Mock _sage_helpme_call
-_sage_helpme_call() { echo "find / -type f -size +1G"; }
+_sage_helpme_call() { REPLY="find / -type f -size +1G"; }
 _sage_helpme_display() { echo "DISPLAY:$1"; }
 
 output=$(_sage_helpme_ask "find files larger than 1GB" 2>&1)
 assert_contains "ask calls display with result" "DISPLAY:find / -type f -size +1G" "$output"
 
 # Mock empty response
-_sage_helpme_call() { echo ""; }
+_sage_helpme_call() { REPLY=""; }
 output=$(_sage_helpme_ask "something impossible" 2>&1)
 assert_contains "ask shows error on empty result" "Could not get a suggestion" "$output"
 
 # Mock NO_COMMAND response (non-command input)
-_sage_helpme_call() { echo "NO_COMMAND"; }
+_sage_helpme_call() { REPLY="NO_COMMAND"; }
 output=$(_sage_helpme_ask "I love you" 2>&1)
 assert_contains "ask handles non-command input" "doesn't look like a command" "$output"
 assert_exit "ask returns 0 for non-command" "0" "$?"
@@ -225,40 +228,48 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 source "$SCRIPT_DIR/../src/ai/helpme.zsh"
 
 # Plain command — no change
-result=$(_sage_helpme_strip "ls -la")
+_sage_helpme_strip "ls -la"
+result="$REPLY"
 assert_eq "plain command unchanged" "ls -la" "$result"
 
 # Triple backticks
-result=$(_sage_helpme_strip '```
+_sage_helpme_strip '```
 ls -la
-```')
+```'
+result="$REPLY"
 assert_eq "strips triple backticks" "ls -la" "$result"
 
 # Triple backticks with language tag
-result=$(_sage_helpme_strip '```bash
+_sage_helpme_strip '```bash
 find / -size +1G
-```')
+```'
+result="$REPLY"
 assert_eq "strips triple backticks with bash tag" "find / -size +1G" "$result"
 
-result=$(_sage_helpme_strip '```zsh
+_sage_helpme_strip '```zsh
 du -sh *
-```')
+```'
+result="$REPLY"
 assert_eq "strips triple backticks with zsh tag" "du -sh *" "$result"
 
 # Single backticks
-result=$(_sage_helpme_strip '`ls -la`')
+_sage_helpme_strip '`ls -la`'
+result="$REPLY"
 assert_eq "strips single backticks" "ls -la" "$result"
 
 # Double quotes
-result=$(_sage_helpme_strip '"ls -la"')
+_sage_helpme_strip '"ls -la"'
+result="$REPLY"
 assert_eq "strips double quotes" "ls -la" "$result"
 
 # Single quotes
-result=$(_sage_helpme_strip "'ls -la'")
+_sage_helpme_strip "'ls -la'"
+result="$REPLY"
 assert_eq "strips single quotes" "ls -la" "$result"
 
 # No stripping for normal text with backticks inside
-result=$(_sage_helpme_strip 'echo `date`')
+_sage_helpme_strip 'echo `date`'
+result="$REPLY"
 assert_eq "preserves internal backticks" 'echo `date`' "$result"
 
 # ═════════════════════════════════════════════════════════════════
@@ -313,8 +324,7 @@ chmod +x "$MOCK_DIR/claude"
 _sage_helpme_call() {
     local raw
     raw=$("$MOCK_DIR/claude" 2>/dev/null)
-    raw=$(_sage_helpme_strip "$raw")
-    printf '%s' "$raw"
+    _sage_helpme_strip "$raw"
 }
 
 # Test ask mode end-to-end
@@ -324,7 +334,7 @@ assert_contains "e2e ask: shows action prompt" "Run it?" "$output"
 
 # Test fix mode end-to-end
 _sage_db_exec "INSERT INTO commands (command, directory, exit_code, timestamp)
-VALUES ('bad_command', '$PWD', 127, $(date +%s));"
+VALUES ('bad_command', '$PWD', 127, $EPOCHSECONDS);"
 
 # Mock returns fix
 cat > "$MOCK_DIR/claude" << 'MOCK'
@@ -335,8 +345,7 @@ MOCK
 _sage_helpme_call() {
     local raw
     raw=$("$MOCK_DIR/claude" 2>/dev/null)
-    raw=$(_sage_helpme_strip "$raw")
-    printf '%s' "$raw"
+    _sage_helpme_strip "$raw"
 }
 
 output=$(echo "n" | hm 2>&1)

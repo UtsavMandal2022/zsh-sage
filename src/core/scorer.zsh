@@ -14,6 +14,8 @@
 # Weights are adjusted dynamically by prefix length (see _sage_adjust_weights).
 #
 
+zmodload zsh/datetime
+
 # Adjust scoring weights based on prefix length.
 # The intuition: what the user needs changes as they type more.
 #   Short prefix (1-3 chars): they're exploring — frequency matters most
@@ -67,10 +69,13 @@ _sage_sequence_override() {
     local prefix="$1"
     local prev_cmd="$2"
 
-    [[ -z "$prev_cmd" ]] && return
+    if [[ -z "$prev_cmd" ]]; then
+        REPLY=""
+        return
+    fi
 
-    local e_prefix="$(_sage_sql_escape "$prefix")"
-    local e_prev="$(_sage_sql_escape "$prev_cmd")"
+    _sage_sql_escape "$prefix"; local e_prefix="$REPLY"
+    _sage_sql_escape "$prev_cmd"; local e_prev="$REPLY"
     local like_prefix="${e_prefix//\$/\$\$}"
     like_prefix="${like_prefix//\%/\$%}"
     like_prefix="${like_prefix//_/\$_}"
@@ -92,7 +97,7 @@ WITH follow_ups AS (
 group_counts AS (
     SELECT cmd_group, COUNT(*) as cnt,
         CAST(COUNT(*) AS REAL) / (SELECT COUNT(*) FROM follow_ups) as share
-    FROM follow_ups
+    FROM  follow_ups
     GROUP BY cmd_group
     ORDER BY cnt DESC
 ),
@@ -120,16 +125,14 @@ _sage_rank_candidates() {
     local prev_cmd="$3"
 
     # Fast path: if a command dominates the sequence (>60%), return it directly
-    local seq_override
-    seq_override=$(_sage_sequence_override "$prefix" "$prev_cmd")
-    if [[ -n "$seq_override" ]]; then
-        printf '%s' "$seq_override"
+    _sage_sequence_override "$prefix" "$prev_cmd"
+    if [[ -n $REPLY ]]; then
         return
     fi
-
-    local e_prefix="$(_sage_sql_escape "$prefix")"
-    local e_dir="$(_sage_sql_escape "$dir")"
-    local e_prev="$(_sage_sql_escape "$prev_cmd")"
+    
+    _sage_sql_escape "$prefix"; local e_prefix="$REPLY"
+    _sage_sql_escape "$dir"; local e_dir="$REPLY"
+    _sage_sql_escape "$prev_cmd"; local e_prev="$REPLY"
 
     # Extract first 2 words of prev_command for fuzzy sequence matching
     # "git commit -m 'fix'" → "git commit" so all commit variants match
@@ -138,7 +141,7 @@ _sage_rank_candidates() {
         local rest="${prev_cmd#* }"
         prev_group="${prev_group} ${rest%% *}"
     fi
-    local e_prev_group="$(_sage_sql_escape "$prev_group")"
+    _sage_sql_escape "$prev_group"; local e_prev_group="$REPLY"
     local like_prev_group="${e_prev_group//\$/\$\$}"
     like_prev_group="${like_prev_group//\%/\$%}"
     like_prev_group="${like_prev_group//_/\$_}"
@@ -148,7 +151,7 @@ _sage_rank_candidates() {
     like_prefix="${like_prefix//_/\$_}"
 
     local now
-    now=$(date +%s)
+    now=$EPOCHSECONDS
 
     # Weights: either prefix-length-aware or straight from profile
     local wf wr wd ws wk
@@ -225,9 +228,8 @@ WHERE s.command LIKE '${like_prefix}%' ESCAPE '\$'
 ORDER BY score DESC
 LIMIT 1;"
 
-    local result
-    result=$(_sage_db_query "$sql")
-    [[ -n "$result" ]] && printf '%s' "${result%%|*}"
+    _sage_db_query "$sql"
+    REPLY=${REPLY%%|*}
 }
 
 # Same as _sage_rank_candidates but returns "score|command" for confidence coloring
@@ -237,16 +239,15 @@ _sage_rank_with_score() {
     local prev_cmd="$3"
 
     # Fast path: dominant sequence returns high confidence
-    local seq_override
-    seq_override=$(_sage_sequence_override "$prefix" "$prev_cmd")
-    if [[ -n "$seq_override" ]]; then
-        printf '0.95|%s' "$seq_override"
+    _sage_sequence_override "$prefix" "$prev_cmd"
+    if [[ -n $REPLY ]]; then
+        REPLY='0.95|'$REPLY
         return
     fi
 
-    local e_prefix="$(_sage_sql_escape "$prefix")"
-    local e_dir="$(_sage_sql_escape "$dir")"
-    local e_prev="$(_sage_sql_escape "$prev_cmd")"
+    _sage_sql_escape "$prefix"; local e_prefix="$REPLY"
+    _sage_sql_escape "$dir"; local e_dir="$REPLY"
+    _sage_sql_escape "$prev_cmd"; local e_prev="$REPLY"
 
     # Extract first 2 words of prev_command for fuzzy sequence matching
     local prev_group="${prev_cmd%% *}"
@@ -254,7 +255,7 @@ _sage_rank_with_score() {
         local rest="${prev_cmd#* }"
         prev_group="${prev_group} ${rest%% *}"
     fi
-    local e_prev_group="$(_sage_sql_escape "$prev_group")"
+    _sage_sql_escape "$prev_group"; local e_prev_group="$REPLY"
     local like_prev_group="${e_prev_group//\$/\$\$}"
     like_prev_group="${like_prev_group//\%/\$%}"
     like_prev_group="${like_prev_group//_/\$_}"
@@ -264,7 +265,7 @@ _sage_rank_with_score() {
     like_prefix="${like_prefix//_/\$_}"
 
     local now
-    now=$(date +%s)
+    now=$EPOCHSECONDS
 
     # Weights: either prefix-length-aware or straight from profile
     local wf wr wd ws wk
@@ -345,9 +346,7 @@ WHERE s.command LIKE '${like_prefix}%' ESCAPE '\$'
 ORDER BY score DESC
 LIMIT 1;"
 
-    local result
-    result=$(_sage_db_query "$sql")
-    [[ -n "$result" ]] && printf '%s' "$result"
+    _sage_db_query "$sql"
 }
 
 # Return top N scored results as newline-separated "score|command" lines
@@ -361,24 +360,24 @@ _sage_rank_top_n() {
 
     # Check sequence override — if it exists, prepend as #1
     local seq_override=""
-    local seq_cmd=""
-    seq_cmd=$(_sage_sequence_override "$prefix" "$prev_cmd")
+    _sage_sequence_override "$prefix" "$prev_cmd"
+    local seq_cmd="$REPLY"
     if [[ -n "$seq_cmd" ]]; then
         seq_override="0.95|${seq_cmd}"
         # Reduce limit by 1 since override takes a slot
         limit=$((limit - 1))
     fi
 
-    local e_prefix="$(_sage_sql_escape "$prefix")"
-    local e_dir="$(_sage_sql_escape "$dir")"
-    local e_prev="$(_sage_sql_escape "$prev_cmd")"
+    _sage_sql_escape "$prefix"; local e_prefix="$REPLY"
+    _sage_sql_escape "$dir"; local e_dir="$REPLY"
+    _sage_sql_escape "$prev_cmd"; local e_prev="$REPLY"
 
     local like_prefix="${e_prefix//\$/\$\$}"
     like_prefix="${like_prefix//\%/\$%}"
     like_prefix="${like_prefix//_/\$_}"
 
     local now
-    now=$(date +%s)
+    now=$EPOCHSECONDS
 
     local wf wr wd ws wk
     if [[ "${ZSH_SAGE_PREFIX_AWARE_WEIGHTS:-true}" == "true" ]]; then
@@ -446,90 +445,83 @@ GROUP BY clean_cmd
 ORDER BY MAX(score) DESC
 LIMIT ${limit};"
 
-    local results
-    results=$(_sage_db_query "$sql")
+    _sage_db_query "$sql"
+    local results="$REPLY"
 
     # Prepend the sequence override if it exists, filter it from scoring results
-    if [[ -n "$seq_override" ]]; then
-        local e_seq_cmd="$(_sage_sql_escape "$seq_cmd")"
-        printf '%s\n' "$seq_override"
-        # Output rest, skipping the override command if it appears in scored results
-        if [[ -n "$results" ]]; then
-            echo "$results" | while IFS= read -r line; do
-                [[ "$line" == *"|${seq_cmd}" ]] && continue
-                echo "$line"
-            done
-        fi
-    else
-        [[ -n "$results" ]] && printf '%s' "$results"
+    reply=()
+    [[ -n "$seq_override" ]] && reply+=("$seq_override")
+
+    if [[ -n "$results" ]]; then
+        local line
+        while IFS= read -r line; do
+            [[ -n "$seq_override" && "$line" == *"|${seq_cmd}" ]] && continue
+            reply+=("$line")
+        done <<< "$results"
     fi
 }
 
 # Score a single candidate (kept for testing — uses the same SQL approach)
 _sage_score_candidate() {
+    zmodload zsh/mathfunc
+
     local candidate="$1"
     local current_dir="$2"
     local prev_cmd="$3"
     local now="$4"
 
     # Parse pipe-delimited fields
-    local cmd="${candidate%%|*}";        candidate="${candidate#*|}"
-    local freq="${candidate%%|*}";       candidate="${candidate#*|}"
-    local last_used="${candidate%%|*}";  candidate="${candidate#*|}"
-    local success="${candidate%%|*}";    candidate="${candidate#*|}"
-    local fail="$candidate"
+    local cmd=${${candidate%%|*}:-};        candidate=${candidate#*|}
+    local -F freq=${${candidate%%|*}:-0};       candidate=${candidate#*|}
+    local -F last_used=${${candidate%%|*}:-0}  candidate=${candidate#*|}
+    local -F success=${${candidate%%|*}:-0}    candidate=${candidate#*|}
+    local -F fail=${candidate:-0}
 
-    : ${freq:=0} ${last_used:=0} ${success:=0} ${fail:=0}
+    _sage_sql_escape "$cmd"; local e_cmd="$REPLY"
+    _sage_sql_escape "$current_dir"; local e_dir="$REPLY"
+    _sage_sql_escape "$prev_cmd"; local e_prev="$REPLY"
+    local -i half_life="${ZSH_SAGE_RECENCY_HALFLIFE:-259200}"
 
-    local e_cmd="$(_sage_sql_escape "$cmd")"
-    local e_dir="$(_sage_sql_escape "$current_dir")"
-    local e_prev="$(_sage_sql_escape "$prev_cmd")"
-    local half_life="${ZSH_SAGE_RECENCY_HALFLIFE:-259200}"
-
-    local wf="$ZSH_SAGE_W_FREQUENCY"
-    local wr="$ZSH_SAGE_W_RECENCY"
-    local wd="$ZSH_SAGE_W_DIRECTORY"
-    local ws="$ZSH_SAGE_W_SEQUENCE"
-    local wk="$ZSH_SAGE_W_SUCCESS"
+    local -F wf="$ZSH_SAGE_W_FREQUENCY"
+    local -F wr="$ZSH_SAGE_W_RECENCY"
+    local -F wd="$ZSH_SAGE_W_DIRECTORY"
+    local -F ws="$ZSH_SAGE_W_SEQUENCE"
+    local -F wk="$ZSH_SAGE_W_SUCCESS"
 
     # Get max frequency for normalization
-    local max_freq
-    max_freq=$(_sage_db_query "SELECT MAX(frequency) FROM stats;")
-    : ${max_freq:=1}
+    _sage_db_query "SELECT MAX(frequency) FROM stats;"
+    local -F max_freq=${REPLY:-1}
 
     # Get dir-specific frequency
-    local dir_freq
-    dir_freq=$(_sage_db_query "SELECT frequency FROM stats WHERE command='${e_cmd}' AND directory='${e_dir}';")
-    : ${dir_freq:=0}
+    _sage_db_query "SELECT frequency FROM stats WHERE command='${e_cmd}' AND directory='${e_dir}';"
+    local -F dir_freq=${REPLY:-0}
 
     # Get sequence score
-    local seq_score
-    seq_score=$(_sage_db_query "SELECT CAST(COUNT(*) AS REAL) / MAX((SELECT COUNT(*) FROM commands WHERE prev_command='${e_prev}'),1) FROM commands WHERE command='${e_cmd}' AND prev_command='${e_prev}';")
-    : ${seq_score:=0}
+    _sage_db_query "SELECT CAST(COUNT(*) AS REAL) / MAX((SELECT COUNT(*) FROM commands WHERE prev_command='${e_prev}'),1) FROM commands WHERE command='${e_cmd}' AND prev_command='${e_prev}';"
+    local -F seq_score=${REPLY:-0}
 
-    # Compute score in one bc call
+    # Compute score
     local total=$((success + fail))
-    local success_rate=0.5
+    local -F success_rate=0.5
     if (( total > 0 )); then
-        success_rate=$(echo "$success / $total" | bc -l)
+        success_rate=$((success / total))
     fi
 
     local age=$((now - last_used))
-    local recency
-    recency=$(echo "e(-0.693147 * $age / $half_life)" | bc -l)
+    local -F recency=$((exp(-0.693147 * age / half_life)))
 
     local freq_norm=0
     if (( max_freq > 0 )); then
-        freq_norm=$(echo "x = sqrt($freq / $max_freq); if (x > 1) 1 else x" | bc -l)
+        freq_norm=$((sqrt(freq / max_freq)))
+        ((freq_norm > 1)) && freq_norm=1
     fi
 
     local dir_norm=0
     if (( max_freq > 0 && dir_freq > 0 )); then
-        dir_norm=$(echo "x = sqrt($dir_freq / $max_freq); if (x > 1) 1 else x" | bc -l)
+        dir_norm=$((1, sqrt(dir_freq / max_freq)))
+        ((dir_norm > 1)) && dir_norm=1
     fi
-
-    local final
-    final=$(echo "${wf} * ${freq_norm} + ${wr} * ${recency} + ${wd} * ${dir_norm} + ${ws} * ${seq_score} + ${wk} * ${success_rate}" | bc -l)
-
-    printf '%.6f|%s\n' "$final" "$cmd"
+    
+    local final=$((wf * freq_norm + wr * recency + wd * dir_norm + ws * seq_score + wk * success_rate))
+    reply=($final $cmd)
 }
