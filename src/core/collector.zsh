@@ -56,15 +56,15 @@ _sage_collector_precmd() {
 
     local timestamp=$EPOCHSECONDS
     local dir="$PWD"
-    local git_branch=""
-
-    # Get git branch if in a repo
-    if command git rev-parse --is-inside-work-tree &>/dev/null; then
-        git_branch=$(command git symbolic-ref --short HEAD 2>/dev/null || echo "")
-    fi
 
     # Record asynchronously to not block the prompt
     {
+        local git_branch=""
+        # Get git branch if in a repo
+        if command git rev-parse --is-inside-work-tree &>/dev/null; then
+            git_branch=$(command git symbolic-ref --short HEAD 2>/dev/null || echo "")
+        fi
+
         _sage_db_record \
             "$_SAGE_LAST_COMMAND" \
             "$dir" \
