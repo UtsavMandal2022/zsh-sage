@@ -401,6 +401,14 @@ assert_not_empty "Single-quoted command retrievable" "$r_quote"
 
 r_pipe=$(_sage_rank_candidates "cat file" "/tmp" "")
 assert_not_empty "Piped command retrievable" "$r_pipe"
+# Regression (#8): '|' in the command must not be eaten by field parsing
+assert_eq "Piped command returned intact" "cat file.txt | grep error | wc -l" "$r_pipe"
+
+r_pipe_scored=$(_sage_rank_with_score "cat file" "/tmp" "")
+local -a pipe_fields
+pipe_fields=("${(@ps:$_SAGE_SEP:)r_pipe_scored}")
+assert_eq "Score row: command field intact despite pipes" "cat file.txt | grep error | wc -l" "${pipe_fields[2]}"
+assert_eq "Score row: score field is numeric" "" "${pipe_fields[1]//[0-9.]/}"
 
 r_dollar=$(_sage_rank_candidates "echo \$" "/tmp" "")
 assert_not_empty "Dollar-sign command retrievable" "$r_dollar"
@@ -456,7 +464,7 @@ done
 # Simulate what the widget does: query, cache contribs, record accept
 r=$(_sage_rank_with_score "git" "/repo" "")
 local -a fields
-fields=("${(@s:|:)r}")
+fields=("${(@ps:$_SAGE_SEP:)r}")
 
 # Record as if user pressed right arrow
 _sage_db_record_accept "${fields[3]:-0}" "${fields[4]:-0}" "${fields[5]:-0}" "${fields[6]:-0}" "${fields[7]:-0}"
