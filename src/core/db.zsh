@@ -28,7 +28,10 @@ _sage_coproc_start() {
     # stay valid and `.quit` from _sage_coproc_stop still gives it a
     # clean shutdown.
     setopt local_options no_monitor no_notify
-    coproc sqlite3 -separator "$_SAGE_SEP" -cmd ".mode list" "$ZSH_SAGE_DB" 2>/dev/null
+    # NOTE: ".separator" must come as a -cmd AFTER ".mode list" — the
+    # -separator flag is applied first and ".mode list" resets the
+    # separator back to the default '|'.
+    coproc sqlite3 -cmd ".mode list" -cmd ".separator ${_SAGE_SEP}" "$ZSH_SAGE_DB" 2>/dev/null
     disown 2>/dev/null
 
     # Verify the coproc actually started
