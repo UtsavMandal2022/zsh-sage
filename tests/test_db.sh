@@ -209,6 +209,76 @@ esac
 
 # ─────────────────────────────────────────────────────────────────
 echo ""
+echo "=== Test: History import (fc-based parsing) ==="
+
+IMPORT_HIST="/tmp/sage-test-hist-$$"
+IMPORT_DB="/tmp/sage-test-import-$$.db"
+
+# Generate an authentic zsh histfile: metafied unicode, multiline
+# continuations, and extended-history timestamps — the formats a
+# naive line-by-line parser gets wrong.
+zsh -fi -c '
+HISTFILE='"$IMPORT_HIST"' HISTSIZE=1000 SAVEHIST=1000
+setopt EXTENDED_HISTORY
+print -s "git status"
+print -s "echo '\''single quoted'\''"
+print -s "echo \"héllo — 日本語のテスト\""
+print -s $'\''for i in 1 2\ndo echo $i\ndone'\''
+print -s "ps -ef | grep foo"
+fc -W
+' </dev/null 2>/dev/null
+
+ZSH_SAGE_DB="$IMPORT_DB" _sage_db_init
+import_out=$(ZSH_SAGE_DB="$IMPORT_DB" _sage_db_import_history "$IMPORT_HIST" 2>/dev/null)
+
+row_count=$(sqlite3 "$IMPORT_DB" "SELECT COUNT(*) FROM commands;")
+assert_eq "Import: 5 history entries -> 5 rows (multiline not split)" "5" "$row_count"
+assert_contains "Import: reported count matches DB" "Imported 5 history" "$import_out"
+
+unicode_row=$(sqlite3 "$IMPORT_DB" "SELECT COUNT(*) FROM commands WHERE command = 'echo \"héllo — 日本語のテスト\"';")
+assert_eq "Import: unicode command unmetafied and intact" "1" "$unicode_row"
+
+multiline_row=$(sqlite3 "$IMPORT_DB" "SELECT COUNT(*) FROM commands WHERE command LIKE 'for i in 1 2%done' AND command LIKE '%' || char(10) || '%';")
+assert_eq "Import: multiline command stored as one row with real newlines" "1" "$multiline_row"
+
+quote_row=$(sqlite3 "$IMPORT_DB" "SELECT COUNT(*) FROM commands WHERE command = 'echo ''single quoted''';")
+assert_eq "Import: single quotes escaped, no backslash artifacts" "1" "$quote_row"
+
+fake_ts=$(sqlite3 "$IMPORT_DB" "SELECT COUNT(*) FROM commands WHERE timestamp = 0 OR timestamp IS NULL;")
+assert_eq "Import: every row has a real timestamp" "0" "$fake_ts"
+
+rm -f "$IMPORT_DB" "$IMPORT_HIST"
+
+# Regression (#9): huge commands + allexport must not hit ARG_MAX.
+# The old batch-in-a-variable design leaked the batch into child env
+# under `setopt allexport` and silently dropped whole batches.
+echo ""
+echo "=== Test: Import at scale under allexport (#9) ==="
+
+IMPORT_BIG="/tmp/sage-test-bighist-$$"
+IMPORT_BIGDB="/tmp/sage-test-bigimport-$$.db"
+{
+    local i pad
+    pad="$(printf 'y%.0s' {1..3000})"
+    for i in {1..600}; do
+        print -r -- ": $((1785000000 + i)):0;echo ${pad} # cmd${i}"
+    done
+} > "$IMPORT_BIG"
+
+big_count=$(zsh -f -c "
+setopt allexport
+source '$(dirname $0)/../src/core/db.zsh'
+export ZSH_SAGE_DB='$IMPORT_BIGDB'
+_sage_db_init
+_sage_db_import_history '$IMPORT_BIG' >/dev/null 2>&1
+sqlite3 '$IMPORT_BIGDB' 'SELECT COUNT(*) FROM commands;'
+")
+assert_eq "Import: 600 huge commands land under allexport (no ARG_MAX loss)" "600" "$big_count"
+
+rm -f "$IMPORT_BIG" "$IMPORT_BIGDB"
+
+# ─────────────────────────────────────────────────────────────────
+echo ""
 echo "==========================================="
 echo "Results: $PASS passed, $FAIL failed"
 echo "==========================================="

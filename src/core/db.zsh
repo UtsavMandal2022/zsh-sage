@@ -309,68 +309,112 @@ WHERE command LIKE '${like_cmd}%' ESCAPE '$'
 }
 
 # Import existing zsh history with sequence inference
-# Parses consecutive history lines to build prev_command relationships
+#
+# Uses zsh's own history machinery (fc) to parse the file rather than
+# reading it line by line: histfiles are metafied (non-ASCII bytes are
+# 0x83-escaped), multiline commands are stored as backslash
+# continuations, and timestamps are optional — hand-parsing gets all
+# three wrong. All rows stream through a single sqlite3 process on
+# stdin, so import works and stays fast regardless of history size,
+# command length, or shell options like ALL_EXPORT (building batches
+# in shell variables broke ARG_MAX and silently dropped rows — #9).
 _sage_db_import_history() {
+    emulate -L zsh
+    setopt local_options extended_glob no_all_export
+
     local histfile="${1:-$HISTFILE}"
-    local count=0
-    local prev_cmd=""
-    local prev_ts=0
+    if [[ ! -r "$histfile" ]]; then
+        echo "Cannot read history file: ${histfile:-\$HISTFILE is not set}"
+        return 1
+    fi
 
     echo "Importing history from $histfile..."
 
-    # Build batch SQL for speed
-    local batch_sql=""
-    while IFS= read -r line; do
-        # Parse zsh extended history format: ": timestamp:0;command"
-        local ts=0
-        local cmd=""
+    local before after
+    before=$(_sage_db_fork "SELECT COUNT(*) FROM commands;")
 
-        if [[ "$line" == ": "* ]]; then
-            # Extract timestamp
-            local meta="${line#: }"
-            ts="${meta%%:*}"
-            # Extract command (everything after the first ;)
-            cmd="${line#*;}"
-        else
-            # Plain command (no timestamp)
-            cmd="$line"
-            ts=$(date +%s)
-        fi
-
-        # Skip empty, very short, or multiline continuation
-        [[ -z "$cmd" ]] && continue
-        (( ${#cmd} < 2 )) && continue
-
-        local escaped="$(_sage_sql_escape "$cmd")"
-        local escaped_prev="$(_sage_sql_escape "$prev_cmd")"
-
-        # Insert into commands table (with sequence data)
-        batch_sql+="INSERT INTO commands (command, directory, prev_command, exit_code, timestamp, git_branch)
-VALUES ('${escaped}', '~', '${escaped_prev}', 0, ${ts}, '');
-"
-        # Upsert into stats table
-        batch_sql+="INSERT INTO stats (command, directory, frequency, last_used, success_count, fail_count)
-VALUES ('${escaped}', '~', 1, ${ts}, 1, 0)
-ON CONFLICT(command, directory) DO UPDATE SET
-    frequency = frequency + 1,
-    last_used = MAX(last_used, ${ts});
-"
-        count=$((count + 1))
-        prev_cmd="$cmd"
-        prev_ts="$ts"
-
-        # Flush every 300 rows
-        if (( count % 300 == 0 )); then
-            _sage_db_fork "BEGIN; ${batch_sql} COMMIT;"
-            batch_sql=""
-            echo "  ...imported $count entries"
-        fi
-    done < "$histfile"
-
-    # Flush remaining
-    if [[ -n "$batch_sql" ]]; then
-        _sage_db_fork "BEGIN; ${batch_sql} COMMIT;"
+    # Switch to an isolated history list loaded from $histfile.
+    # savesize 0 guarantees nothing is ever written back to the file.
+    # NOTE: fc -p is NOT restored automatically on function return —
+    # the always-block below is what protects the session history.
+    if ! builtin fc -p "$histfile" 9999999 0 2>/dev/null; then
+        echo "Could not load history from $histfile"
+        return 1
     fi
 
-    echo "Imported $count history entries (with sequence data)."
+    {
+        # Event number -> epoch timestamp from one builtin listing.
+        # fc -l prints one line per event (embedded newlines render as
+        # literal backslash-n) as "<event>[*] <epoch>  <command>", so
+        # whitespace splitting is unambiguous. Dumped to a temp file
+        # and slurped with $(<file): reading builtin output through a
+        # pipe (via `while read` or $(...)) degrades to byte-sized
+        # read() syscalls in zsh — ~50x slower on big histories.
+        local -A ts_for
+        local tsdump="${TMPDIR:-/tmp}/.zsh-sage-import.$$" listing line
+        local -a parts
+        builtin fc -l -t '%s' 1 > "$tsdump" 2>/dev/null
+        listing="$(<$tsdump)"
+        command rm -f "$tsdump"
+        for line in "${(@f)listing}"; do
+            parts=(${=line})
+            (( ${#parts} >= 2 )) && ts_for[${parts[1]%\*}]="${parts[2]}"
+        done
+        unset listing
+
+        # Fallback timestamp for events without one (no fork needed)
+        local now="${(%):-%D{%s}}"
+
+        # $history's key listing omits the newest event ($HISTCMD) even
+        # though it is subscriptable — add it back explicitly.
+        local -a events
+        events=(${(kon)history})
+        if [[ -n "${history[$HISTCMD]:-}" ]] && (( ${events[(I)$HISTCMD]} == 0 )); then
+            events+=($HISTCMD)
+        fi
+
+        # Quote-doubling via variables: backslashes in the replacement
+        # side of ${var//pat/repl} are literal, so \'\' would inject
+        # actual backslashes (same reason _sage_sql_escape uses vars).
+        local sq="'" dsq="''"
+        local evt cmd prev="" e_cmd e_prev ts count=0
+        {
+            print 'BEGIN;'
+            for evt in $events; do
+                cmd="${history[$evt]}"
+                [[ -z "$cmd" ]] && continue
+                (( ${#cmd} < 2 )) && continue
+
+                ts="${ts_for[$evt]:-$now}"
+                [[ "$ts" == <-> ]] || ts="$now"
+
+                e_cmd="${cmd//$sq/$dsq}"
+                e_prev="${prev//$sq/$dsq}"
+
+                print -r -- "INSERT INTO commands (command, directory, prev_command, exit_code, timestamp, git_branch)
+VALUES ('${e_cmd}', '~', '${e_prev}', 0, ${ts}, '');"
+                print -r -- "INSERT INTO stats (command, directory, frequency, last_used, success_count, fail_count)
+VALUES ('${e_cmd}', '~', 1, ${ts}, 1, 0)
+ON CONFLICT(command, directory) DO UPDATE SET
+    frequency = frequency + 1,
+    last_used = MAX(last_used, ${ts});"
+
+                prev="$cmd"
+                (( ++count % 2000 )) || print -u2 "  ...prepared $count entries"
+            done
+            print 'COMMIT;'
+        } | command sqlite3 "$ZSH_SAGE_DB"
+        local sqlite_status=$pipestatus[2]
+
+        # Report what actually landed in the DB, not what we attempted
+        after=$(_sage_db_fork "SELECT COUNT(*) FROM commands;")
+        if (( sqlite_status != 0 )); then
+            echo "Import finished with errors (sqlite3 exit ${sqlite_status})."
+        fi
+        echo "Imported $(( after - before )) history entries (with sequence data)."
+        (( sqlite_status == 0 ))
+    } always {
+        # Restore the session's real history
+        builtin fc -P 2>/dev/null
+    }
 }
