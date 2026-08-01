@@ -17,14 +17,14 @@
 #
 
 hm() {
+    typeset -g _SAGE_AI_PROVIDER=""
+
     case "$ZSH_SAGE_AI_ENABLED" in
         true|auto)
-            if ! command -v claude &>/dev/null; then
-                ZSH_SAGE_AI_ENABLED=claude
-
-            elif ! command -v ollama &>/dev/null; then
-                ZSH_SAGE_AI_ENABLED=ollama
-
+            if command -v claude &>/dev/null; then
+                _SAGE_AI_PROVIDER=claude
+            elif command -v ollama &>/dev/null; then
+                _SAGE_AI_PROVIDER=ollama
             else
                 echo >&2 ""
                 echo >&2 "  hm needs Claude Code or Ollama. Run zsage ai to set it up."
@@ -41,33 +41,16 @@ hm() {
                 echo >&2 ""
                 return 1
             fi
+            _SAGE_AI_PROVIDER=claude
             ;;
         ollama)
             if ! command -v ollama &>/dev/null; then
                 echo >&2 ""
-                echo >&2 "  hm needs Ollama. Install it."
+                echo >&2 "  hm needs Ollama. Install it: https://ollama.com/download"
                 echo >&2 ""
                 return 1
             fi
-            if [[ "${ZSH_SAGE_OLLAMA_MODEL}" = "" ]] ; then
-                while read a b ; do
-                    if [[ "$a" != NAME ]] ; then
-                        echo >&2 "zsh-sage using loaded ollama model: $a"
-                        ZSH_SAGE_OLLAMA_MODEL="$a"
-                        break
-                    fi
-                done < <(ollama ps)
-
-                if [[ "${ZSH_SAGE_OLLAMA_MODEL}" = "" ]] ; then
-                    while read a b ; do
-                        if [[ "$a" != NAME ]] ; then
-                            echo >&2 "zsh-sage using recently installed ollama model: $a"
-                            ZSH_SAGE_OLLAMA_MODEL="$a"
-                            break
-                        fi
-                    done < <(ollama list)
-                fi
-            fi
+            _SAGE_AI_PROVIDER=ollama
             ;;
         *)
             echo >&2 ""
@@ -76,6 +59,36 @@ hm() {
             return 1
             ;;
     esac
+
+    # Resolve which Ollama model to use: ZSH_SAGE_OLLAMA_MODEL wins, otherwise
+    # detect once per session (currently loaded model, else most recent install).
+    if [[ "$_SAGE_AI_PROVIDER" == "ollama" && -z "${ZSH_SAGE_OLLAMA_MODEL:-}" && -z "${_SAGE_OLLAMA_MODEL:-}" ]]; then
+        local name rest
+        while read -r name rest; do
+            if [[ -n "$name" && "$name" != NAME ]]; then
+                echo >&2 "  zsh-sage using loaded ollama model: $name"
+                typeset -g _SAGE_OLLAMA_MODEL="$name"
+                break
+            fi
+        done < <(ollama ps 2>/dev/null)
+
+        if [[ -z "${_SAGE_OLLAMA_MODEL:-}" ]]; then
+            while read -r name rest; do
+                if [[ -n "$name" && "$name" != NAME ]]; then
+                    echo >&2 "  zsh-sage using recently installed ollama model: $name"
+                    typeset -g _SAGE_OLLAMA_MODEL="$name"
+                    break
+                fi
+            done < <(ollama list 2>/dev/null)
+        fi
+
+        if [[ -z "${_SAGE_OLLAMA_MODEL:-}" ]]; then
+            echo >&2 ""
+            echo >&2 "  No Ollama models installed. Pull one first: ollama pull <model>"
+            echo >&2 ""
+            return 1
+        fi
+    fi
 
     if [[ $# -gt 0 ]]; then
         _sage_helpme_ask "$*"
@@ -204,20 +217,20 @@ _sage_helpme_call() {
     _sage_helpme_spinner &
     local spinner_pid=$!
 
-    local raw
-    case "$ZSH_SAGE_AI_ENABLED" in
+    local raw exit_code=1
+    case "${_SAGE_AI_PROVIDER:-}" in
         claude)
             raw=$(claude -p "$prompt" --max-turns 1 --no-session-persistence 2>/dev/null)
+            exit_code=$?
             ;;
         ollama)
-            raw=$(ollama run "${ZSH_SAGE_OLLAMA_MODEL}" "$prompt" --hidethinking 2>/dev/null)
+            raw=$(ollama run "${ZSH_SAGE_OLLAMA_MODEL:-${_SAGE_OLLAMA_MODEL:-}}" "$prompt" --hidethinking 2>/dev/null)
+            exit_code=$?
             ;;
         *)
-            echo >&2 "invalid ZSH_SAGE_AI_ENABLED=$ZSH_SAGE_AI_ENABLED setting."
+            echo >&2 "invalid AI provider '${_SAGE_AI_PROVIDER:-}' — run hm via its entry point."
             ;;
     esac
-
-    local exit_code=$?
 
     # Stop spinner
     kill "$spinner_pid" 2>/dev/null
@@ -225,7 +238,7 @@ _sage_helpme_call() {
     printf '\r                    \r' >&2
 
     if (( exit_code != 0 || ${#raw} == 0 )); then
-        echo "  Claude Code returned an error." >&2
+        echo "  ${_SAGE_AI_PROVIDER:-AI provider} returned an error." >&2
         return 1
     fi
 
@@ -285,6 +298,7 @@ _sage_helpme_display() {
     # Build the box — wrap long commands
     local term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
     local max_width=$(( term_width - 10 ))
+    (( max_width < 20 )) && max_width=20
     local -a lines=()
 
     if (( ${#cmd} <= max_width )); then
@@ -331,7 +345,7 @@ _sage_helpme_display() {
     done
     (( box_width < 40 )) && box_width=40
 
-    local border=${(pl:$box_width::─:)}
+    local border=${(pl:$box_width::─:):-}
 
     echo ""
     echo "  ${d}┌${border}┐${r}"

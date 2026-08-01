@@ -93,10 +93,10 @@ ${b}CONFIGURATION${r} ${d}(add to ~/.zshrc)${r}
   ${y}export${r} ZSH_SAGE_PROFILE=${g}"default"${r}                  ${d}# default | contextual | recent${r}
   ${y}export${r} ZSH_SAGE_W_FREQUENCY=${g}"0.30"${r}                 ${d}# Override individual weights${r}
   ${y}export${r} ZSH_SAGE_AI_ENABLED=${g}[auto|claude|ollama]${r}    ${d}# Enable AI ghost-text suggestions${r}
-  ${y}export${r} ZSH_SAGE_OLLAMA_MODEL=${g}"gemma4:e4b"${r}          ${d}# Select specific Ollama model${r}
+  ${y}export${r} ZSH_SAGE_OLLAMA_MODEL=${g}"gemma3n:e4b"${r}          ${d}# Select specific Ollama model${r}
   ${y}export${r} ZSH_SAGE_FS_SUGGEST=${g}false${r}                   ${d}# Disable file suggestions from cwd${r}
 
-${b}AI COMMANDS${r} ${d}(requires Claude Code: npm i -g @anthropic-ai/claude-code)${r}
+${b}AI COMMANDS${r} ${d}(requires Claude Code or Ollama — run zsage ai to set up)${r}
   ${c}hm${r} ${d}<question>${r}  Ask AI for a command ${d}(e.g. hm find large files)${r}
   ${c}hm${r}              Suggest a fix for your last failed command
 
@@ -139,7 +139,7 @@ _sage_cli_status() {
         true|auto)
             ai_text="${g}yes - auto detect${r}"
             ;;
-        clause)
+        claude)
             ai_text="${g}yes (claude)${r}"
             ;;
         ollama)
@@ -411,30 +411,12 @@ _sage_cli_ai() {
     command -v claude &>/dev/null && have_claude=true
     command -v ollama &>/dev/null && have_ollama=true
 
-    # Check if Claude Code is installed
+    # Check if either provider is installed
     if ! $have_claude && ! $have_ollama; then
-        echo "  ${y}Neither Claude Code nor Ollama are not installed.${r}"
+        echo "  ${y}Neither Claude Code nor Ollama is installed.${r}"
         echo "  Install one first:"
         echo "    Claude: ${c}npm install -g @anthropic-ai/claude-code${r}"
-        local osid=$([ -f /etc/os-release ] && source /etc/os-release && echo $ID)
-        case "$osid" in
-            nix*)
-                echo "    Ollama: add 'ollama' to your Nix configuration" ;;
-            arch|manjaro|endeavouros|garuda)
-                echo "    Ollama: sudo pacman -S ollama" ;;
-            fedora)
-                echo "    Ollama: sudo dnf install ollama" ;;
-            debian|ubuntu|linuxmint|pop|kali|zorin)
-                echo "    Ollama: sudo apt install ollama" ;;
-            opensuse*|suse*)
-                echo "    Ollama: sudo zypper install ollama" ;;
-            gentoo)
-                echo "    Ollama: emerge --ask app-misc/ollama" ;;
-            void)
-                echo "    Ollama: sudo xbps-install -S ollama" ;;
-            *)
-                echo "    Ollama: curl -fsSL https://ollama.com/install.sh | sh" ;;
-        esac
+        echo "    Ollama: ${c}https://ollama.com/download${r}"
         echo ""
         return 1
     fi
@@ -470,13 +452,19 @@ _sage_cli_ai() {
 
     if ! $have_claude ; then
         case $reply in
-            c|C) reply="" ;;
+            c|C)
+                echo "  ${y}Claude Code is not installed — using auto-detect instead.${r}"
+                reply=""
+                ;;
         esac
     fi
 
     if ! $have_ollama ; then
         case $reply in
-            o|O) reply="" ;;
+            o|O)
+                echo "  ${y}Ollama is not installed — using auto-detect instead.${r}"
+                reply=""
+                ;;
         esac
     fi
 
