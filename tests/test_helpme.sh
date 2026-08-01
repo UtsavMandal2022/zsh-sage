@@ -102,14 +102,113 @@ export ZSH_SAGE_AI_ENABLED=""
 output=$(hm "test" 2>&1)
 assert_exit "hm returns 1 when AI empty" "1" "$?"
 
-# Test 3: hm fails when AI enabled but claude not found
+# Test 3: hm fails in auto mode when neither provider is found
 export ZSH_SAGE_AI_ENABLED=true
-# Mock claude away by overriding PATH
+# Mock both providers away by overriding PATH
+output=$(PATH="/nonexistent" hm "test" 2>&1)
+assert_exit "hm returns 1 when no provider found" "1" "$?"
+assert_contains "hm shows setup message" "Claude Code or Ollama" "$output"
+
+# Test 4: explicit claude mode fails with install hint when claude not found
+export ZSH_SAGE_AI_ENABLED=claude
 output=$(PATH="/nonexistent" hm "test" 2>&1)
 assert_exit "hm returns 1 when claude not found" "1" "$?"
 assert_contains "hm shows install message" "npm install" "$output"
 
+# Test 5: explicit ollama mode fails with install hint when ollama not found
+export ZSH_SAGE_AI_ENABLED=ollama
+output=$(PATH="/nonexistent" hm "test" 2>&1)
+assert_exit "hm returns 1 when ollama not found" "1" "$?"
+assert_contains "hm shows ollama install hint" "ollama.com" "$output"
+
 cleanup
+
+# ═════════════════════════════════════════════════════════════════
+# PROVIDER DETECTION TESTS — auto-detect + ollama model selection
+# ═════════════════════════════════════════════════════════════════
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Provider detection tests"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+source "$SCRIPT_DIR/../src/ai/helpme.zsh"
+unset ZSH_SAGE_OLLAMA_MODEL
+
+# Mock dirs: one with only claude, one with only ollama
+DETECT_DIR="/tmp/sage-detect-$$"
+mkdir -p "$DETECT_DIR/claude-only" "$DETECT_DIR/ollama-only"
+
+cat > "$DETECT_DIR/claude-only/claude" << 'MOCK'
+#!/bin/sh
+echo "mock claude"
+MOCK
+chmod +x "$DETECT_DIR/claude-only/claude"
+
+cat > "$DETECT_DIR/ollama-only/ollama" << 'MOCK'
+#!/bin/sh
+case "$1" in
+    ps)   printf 'NAME    ID    SIZE    PROCESSOR    UNTIL\n' ;;
+    list) printf 'NAME    ID    SIZE    MODIFIED\nllama3:8b    abc123    4.7 GB    2 days ago\n' ;;
+esac
+MOCK
+chmod +x "$DETECT_DIR/ollama-only/ollama"
+
+# Replace ask/fix so hm only reports what the gate resolved
+_sage_helpme_ask() { echo "PROVIDER:${_SAGE_AI_PROVIDER} MODEL:${ZSH_SAGE_OLLAMA_MODEL:-${_SAGE_OLLAMA_MODEL:-}}"; }
+_sage_helpme_fix() { _sage_helpme_ask; }
+
+# Auto mode: only claude installed
+export ZSH_SAGE_AI_ENABLED=true
+output=$(PATH="$DETECT_DIR/claude-only" hm "test" 2>&1)
+assert_contains "auto picks claude when only claude installed" "PROVIDER:claude" "$output"
+
+# Auto mode: both installed — claude preferred
+output=$(PATH="$DETECT_DIR/claude-only:$DETECT_DIR/ollama-only" hm "test" 2>&1)
+assert_contains "auto prefers claude when both installed" "PROVIDER:claude" "$output"
+
+# Auto mode: only ollama installed — picks ollama and detects model
+output=$(PATH="$DETECT_DIR/ollama-only" hm "test" 2>&1)
+assert_contains "auto picks ollama when only ollama installed" "PROVIDER:ollama" "$output"
+assert_contains "auto-detected ollama gets a model" "MODEL:llama3:8b" "$output"
+assert_contains "model detection reports its pick" "recently installed ollama model" "$output"
+
+# Auto mode does not overwrite the user's setting
+assert_eq "auto mode leaves ZSH_SAGE_AI_ENABLED untouched" "true" "$ZSH_SAGE_AI_ENABLED"
+
+# Explicit ollama: ZSH_SAGE_OLLAMA_MODEL wins, no detection
+export ZSH_SAGE_AI_ENABLED=ollama
+output=$(ZSH_SAGE_OLLAMA_MODEL="custom:model" PATH="$DETECT_DIR/ollama-only" hm "test" 2>&1)
+assert_contains "explicit model is used verbatim" "MODEL:custom:model" "$output"
+assert_not_contains "explicit model skips detection" "ollama model:" "$output"
+
+# Explicit ollama: loaded model (ollama ps) preferred over installed list
+cat > "$DETECT_DIR/ollama-only/ollama" << 'MOCK'
+#!/bin/sh
+case "$1" in
+    ps)   printf 'NAME    ID    SIZE    PROCESSOR    UNTIL\nqwen3:4b    def456    2.6 GB    100%% GPU    4 minutes from now\n' ;;
+    list) printf 'NAME    ID    SIZE    MODIFIED\nllama3:8b    abc123    4.7 GB    2 days ago\n' ;;
+esac
+MOCK
+
+output=$(PATH="$DETECT_DIR/ollama-only" hm "test" 2>&1)
+assert_contains "loaded model preferred over installed" "MODEL:qwen3:4b" "$output"
+assert_contains "loaded model detection reports its pick" "loaded ollama model" "$output"
+
+# Explicit ollama: no models at all — clear error
+cat > "$DETECT_DIR/ollama-only/ollama" << 'MOCK'
+#!/bin/sh
+case "$1" in
+    ps)   printf 'NAME    ID    SIZE    PROCESSOR    UNTIL\n' ;;
+    list) printf 'NAME    ID    SIZE    MODIFIED\n' ;;
+esac
+MOCK
+
+output=$(PATH="$DETECT_DIR/ollama-only" hm "test" 2>&1)
+assert_exit "hm returns 1 when no ollama models installed" "1" "$?"
+assert_contains "hm suggests pulling a model" "ollama pull" "$output"
+
+rm -rf "$DETECT_DIR"
 
 # ═════════════════════════════════════════════════════════════════
 # CONTEXT TESTS — _sage_helpme_context gathers shell context
@@ -274,6 +373,7 @@ source "$SCRIPT_DIR/../src/ai/helpme.zsh"
 
 # Test box rendering (press 'n' to skip execution)
 export NO_COLOR=1  # disable colors for clean assertion
+export COLUMNS=80  # pin width — box wrapping depends on terminal size
 output=$(echo "n" | _sage_helpme_display "ls -la" 2>&1)
 assert_contains "display shows top border" "┌" "$output"
 assert_contains "display shows bottom border" "└" "$output"
@@ -299,6 +399,7 @@ setup_db
 source "$SCRIPT_DIR/../src/ai/helpme.zsh"
 export ZSH_SAGE_AI_ENABLED=true
 export NO_COLOR=1
+export COLUMNS=80  # pin width — box wrapping depends on terminal size
 
 # Create a mock claude command
 MOCK_DIR="/tmp/sage-mock-$$"
@@ -308,6 +409,11 @@ cat > "$MOCK_DIR/claude" << 'MOCK'
 echo "find / -type f -size +1G 2>/dev/null"
 MOCK
 chmod +x "$MOCK_DIR/claude"
+
+# Put the mock on PATH so hm's provider gate resolves to claude
+# even on machines without the real CLI installed.
+SAVED_PATH="$PATH"
+export PATH="$MOCK_DIR:$PATH"
 
 # Override _sage_helpme_call to use mock (skip spinner)
 _sage_helpme_call() {
@@ -345,6 +451,7 @@ assert_contains "e2e fix: shows exit code" "127" "$output"
 assert_contains "e2e fix: shows suggestion" "good_command" "$output"
 
 # Cleanup
+export PATH="$SAVED_PATH"
 rm -rf "$MOCK_DIR"
 unset NO_COLOR
 cleanup
