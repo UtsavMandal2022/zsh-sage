@@ -32,9 +32,9 @@ You type:   git co
                    ╭──────────────────────────────────────╮
                    │  frequency    git commit: 300 uses   │
                    │  recency      used 2 minutes ago     │
-                   │  directory    in ~/project (common)   │
-                   │  sequence     after "git add ."       │
-                   │  success      100% exit code 0        │
+                   │  directory    in ~/project (common)  │
+                   │  sequence     after "git add ."      │
+                   │  success      100% exit code 0       │
                    ╰──────────────────────────────────────╯
 Suggestion: git commit -m 'update'
             ~~~~~~~~~~~~~~~~~~~~~~  (sage green = high confidence)
