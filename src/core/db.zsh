@@ -31,7 +31,12 @@ _sage_coproc_start() {
     # NOTE: ".separator" must come as a -cmd AFTER ".mode list" — the
     # -separator flag is applied first and ".mode list" resets the
     # separator back to the default '|'.
-    coproc sqlite3 -cmd ".mode list" -cmd ".separator ${_SAGE_SEP}" "$ZSH_SAGE_DB" 2>/dev/null
+    # -batch -init /dev/null: skip the user's ~/.sqliterc — settings like
+    # ".headers on" or ".mode column" there leak a header row (or reformat
+    # output) into every query result, which the widgets then parse as a
+    # suggestion named "clean_cmd" with score "score" (issue #17).
+    # ".headers off" is belt-and-braces on top.
+    coproc sqlite3 -batch -init /dev/null -cmd ".headers off" -cmd ".mode list" -cmd ".separator ${_SAGE_SEP}" "$ZSH_SAGE_DB" 2>/dev/null
     disown 2>/dev/null
 
     # Verify the coproc actually started
@@ -157,7 +162,7 @@ _sage_db_exec() {
 
 # Fallback: run via sqlite3 fork (for init and import where coproc isn't ready)
 _sage_db_fork() {
-    printf '%s' "$1" | sqlite3 -separator "$_SAGE_SEP" -cmd ".timeout 5000" "$ZSH_SAGE_DB"
+    printf '%s' "$1" | sqlite3 -batch -init /dev/null -cmd ".headers off" -separator "$_SAGE_SEP" -cmd ".timeout 5000" "$ZSH_SAGE_DB"
 }
 
 # ── Database initialization ──────────────────────────────────────
@@ -168,7 +173,7 @@ _sage_db_init() {
     _SAGE_COPROC_ALIVE=0
 
     # Schema must be created via fork since coproc needs the DB to exist first
-    sqlite3 "$ZSH_SAGE_DB" <<'SQL'
+    sqlite3 -batch -init /dev/null "$ZSH_SAGE_DB" <<'SQL'
 CREATE TABLE IF NOT EXISTS commands (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     command     TEXT    NOT NULL,
@@ -407,7 +412,7 @@ ON CONFLICT(command, directory) DO UPDATE SET
                 (( ++count % 2000 )) || print -u2 "  ...prepared $count entries"
             done
             print 'COMMIT;'
-        } | command sqlite3 "$ZSH_SAGE_DB"
+        } | command sqlite3 -batch -init /dev/null "$ZSH_SAGE_DB"
         local sqlite_status=$pipestatus[2]
 
         # Report what actually landed in the DB, not what we attempted

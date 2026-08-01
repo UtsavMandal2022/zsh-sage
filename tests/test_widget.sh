@@ -161,6 +161,59 @@ assert_eq "cycle index reset"        "0"  "$_SAGE_CYCLE_INDEX"
 assert_eq "cycle prefix cleared"     ""   "$_SAGE_CYCLE_PREFIX"
 
 echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Non-numeric score hardening (issue #17)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# A user's ~/.sqliterc with ".headers on" used to leak the SQL header row
+# "score␟clean_cmd␟…" into query results. fields[1]="score" then hit zsh
+# arithmetic, where a string value is re-evaluated as an expression —
+# "score" self-references into "math recursion limit exceeded" — and
+# fields[2]="clean_cmd" was shown as ghost text for any prefix "c"…
+
+# ── Case 9: _sage_confidence_style never does math on garbage ──
+assert_eq "confidence_style('score'): falls back to LOW, no recursion" \
+    "fg=${ZSH_SAGE_COLOR_LOW}" "$(_sage_confidence_style 'score' 2>&1)"
+assert_eq "confidence_style(''): falls back to LOW" \
+    "fg=${ZSH_SAGE_COLOR_LOW}" "$(_sage_confidence_style '' 2>&1)"
+assert_eq "confidence_style('5.0e-05'): sci-notation treated as LOW" \
+    "fg=${ZSH_SAGE_COLOR_LOW}" "$(_sage_confidence_style '5.0e-05' 2>&1)"
+# Numeric inputs still map correctly (defaults: HIGH=0.45, LOW=0.20)
+assert_eq "confidence_style('0.50'): HIGH" \
+    "fg=${ZSH_SAGE_COLOR_HIGH}" "$(_sage_confidence_style '0.50' 2>&1)"
+assert_eq "confidence_style('0.30'): MED" \
+    "fg=${ZSH_SAGE_COLOR_MED}" "$(_sage_confidence_style '0.30' 2>&1)"
+assert_eq "confidence_style('0.05'): LOW" \
+    "fg=${ZSH_SAGE_COLOR_LOW}" "$(_sage_confidence_style '0.05' 2>&1)"
+
+# ── Case 10: header row from the ranker is rejected, not suggested ──
+typeset -g _SAGE_SEP=$'\x1f'          # normally defined in db.zsh
+typeset -g _SAGE_PREV_COMMAND=""
+typeset -g ZSH_SAGE_FS_SUGGEST=false
+_sage_highlight_apply() { :; }        # no ZLE here
+
+_sage_rank_with_score() {
+    print -r -- "score${_SAGE_SEP}clean_cmd${_SAGE_SEP}freq_contrib${_SAGE_SEP}rec_contrib${_SAGE_SEP}dir_contrib${_SAGE_SEP}seq_contrib${_SAGE_SEP}succ_contrib"
+}
+reset_state
+BUFFER="c"
+_sage_update_suggestion 2>&1
+assert_eq "header row: no ghost text shown"   "" "$POSTDISPLAY"
+assert_eq "header row: no suggestion cached"  "" "$_SAGE_CURRENT_SUGGESTION"
+assert_eq "header row: contribs stay numeric" "0" "$_SAGE_CURRENT_FREQ_CONTRIB"
+
+# ── Case 11: a real result still suggests (guard isn't over-eager) ──
+_sage_rank_with_score() {
+    print -r -- "0.5${_SAGE_SEP}cd /tmp${_SAGE_SEP}0.2${_SAGE_SEP}0.1${_SAGE_SEP}0.1${_SAGE_SEP}0.05${_SAGE_SEP}0.05"
+}
+reset_state
+BUFFER="cd"
+_sage_update_suggestion 2>&1
+assert_eq "real result: ghost text shown"  " /tmp"   "$POSTDISPLAY"
+assert_eq "real result: suggestion cached" "cd /tmp" "$_SAGE_CURRENT_SUGGESTION"
+assert_eq "real result: contribs cached"   "0.2"     "$_SAGE_CURRENT_FREQ_CONTRIB"
+
+echo ""
 echo "==========================================="
 echo "Results: $PASS passed, $FAIL failed"
 echo "==========================================="

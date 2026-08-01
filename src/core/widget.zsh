@@ -37,6 +37,15 @@ typeset -g ZSH_SAGE_CONFIDENCE_LOW="${ZSH_SAGE_CONFIDENCE_LOW:-0.20}"
 _sage_confidence_style() {
     local score="$1"
 
+    # A non-numeric score must never reach the arithmetic below: zsh math
+    # re-evaluates a variable's string value as an expression, so a stray
+    # word like "score" self-references into "math recursion limit
+    # exceeded" (issue #17). Fall back to the faint style.
+    if [[ "$score" != (<->|<->.<->|.<->) ]]; then
+        echo "fg=${ZSH_SAGE_COLOR_LOW}"
+        return
+    fi
+
     # Integer math: score * 100 to avoid bc
     # Pad decimals to 2 digits: "0.7" → "70", "0.27" → "27", "0.511" → "51"
     local score_int=${${score%%.*}:-0}
@@ -144,6 +153,16 @@ _sage_update_suggestion() {
         fields=("${(@ps:$_SAGE_SEP:)result}")
         local score="${fields[1]}"
         local suggestion="${fields[2]}"
+
+        # Reject rows whose score isn't a number — e.g. the SQL header
+        # line "score␟clean_cmd␟…" that leaks through when sqlite3 output
+        # is reconfigured (issue #17). This also keeps non-numeric contrib
+        # fields out of the accept-path arithmetic. Scientific notation
+        # (sqlite prints tiny REALs as "5.0e-05") is a valid score.
+        if [[ "$score" != (<->|<->.<->|.<->)(([eE])([+-]|)<->|) ]]; then
+            score=0
+            suggestion=""
+        fi
 
         if [[ -n "$suggestion" && "$suggestion" != "$prefix" && "$suggestion" == "$prefix"* ]]; then
             _SAGE_CURRENT_SUGGESTION="$suggestion"
