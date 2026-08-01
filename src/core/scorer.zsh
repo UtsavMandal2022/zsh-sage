@@ -469,8 +469,9 @@ LIMIT ${limit};"
 _sage_score_candidate() {
     # Force C numeric locale so bc/printf use '.' as the decimal mark.
     # Without this, locales like sv_SE produce '0,98' which bc rejects
-    # with "(standard_in) 1: syntax error".
-    local -x LC_NUMERIC=C
+    # with "(standard_in) 1: syntax error". LC_ALL is needed too: if the
+    # user exports LC_ALL=sv_SE.UTF-8 it overrides LC_NUMERIC entirely.
+    local -x LC_ALL=C LC_NUMERIC=C
 
     local candidate="$1"
     local current_dir="$2"
