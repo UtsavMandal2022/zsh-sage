@@ -93,6 +93,7 @@ ${b}CONFIGURATION${r} ${d}(add to ~/.zshrc)${r}
   ${y}export${r} ZSH_SAGE_PROFILE=${g}"default"${r}      ${d}# default | contextual | recent${r}
   ${y}export${r} ZSH_SAGE_W_FREQUENCY=${g}"0.30"${r}     ${d}# Override individual weights${r}
   ${y}export${r} ZSH_SAGE_AI_ENABLED=${g}true${r}        ${d}# Enable AI ghost-text suggestions${r}
+  ${y}export${r} ZSH_SAGE_FS_SUGGEST=${g}false${r}       ${d}# Disable file suggestions from cwd${r}
 
 ${b}AI COMMANDS${r} ${d}(requires Claude Code: npm i -g @anthropic-ai/claude-code)${r}
   ${c}hm${r} ${d}<question>${r}  Ask AI for a command ${d}(e.g. hm find large files)${r}
@@ -141,6 +142,7 @@ ${b}STATUS${r}
   ${d}Commands logged${r} ${c}${cmd_count:-0}${r}
   ${d}Unique commands${r} ${c}${stat_count:-0}${r}
   ${d}AI enabled${r}      $(if [[ "$ZSH_SAGE_AI_ENABLED" == "true" ]]; then echo "${g}yes${r}"; else echo "${d}no${r}"; fi)
+  ${d}File fallback${r}   $(if [[ "$ZSH_SAGE_FS_SUGGEST" == "true" ]]; then echo "${g}yes${r}"; else echo "${d}no${r}"; fi)
 
 ${b}WEIGHTS${r}
   ${m}frequency${r}  $ZSH_SAGE_W_FREQUENCY  ${d}$(printf '%-20s' "$(printf '%0.s|' $(seq 1 $(echo "$ZSH_SAGE_W_FREQUENCY * 20 / 1" | bc)))")${r}

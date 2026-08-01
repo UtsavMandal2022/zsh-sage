@@ -125,6 +125,11 @@ _sage_update_suggestion() {
     local result
     result=$(_sage_rank_with_score "$prefix" "$PWD" "$_SAGE_PREV_COMMAND")
 
+    # Filesystem fallback: history knows nothing, maybe the cwd does (#19)
+    if [[ -z "$result" && "$ZSH_SAGE_FS_SUGGEST" == "true" ]]; then
+        result=$(_sage_strategy_fs "$prefix")
+    fi
+
     if [[ -n "$result" ]]; then
         # Split pipe-delimited result:
         # score|command|freq_contrib|rec_contrib|dir_contrib|seq_contrib|succ_contrib
@@ -274,6 +279,11 @@ _sage_cycle_widget() {
 
         local raw
         raw=$(_sage_rank_top_n "$prefix" "$PWD" "$_SAGE_PREV_COMMAND" "${ZSH_SAGE_CYCLE_COUNT:-8}")
+
+        # Filesystem fallback for cycling — same trigger as ghost text (#19)
+        if [[ -z "$raw" && "$ZSH_SAGE_FS_SUGGEST" == "true" ]]; then
+            raw=$(_sage_strategy_fs "$prefix" "${ZSH_SAGE_CYCLE_COUNT:-8}")
+        fi
 
         _SAGE_CYCLE_RESULTS=()
         if [[ -n "$raw" ]]; then
