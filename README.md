@@ -56,7 +56,7 @@ Everything below works out of the box — no configuration needed.
 - **Learns from you** — every accepted suggestion tunes the ranking over time
 - **Cycle through alternatives** — press Ctrl+N to browse ranked suggestions, confidence color updates with each one
 - **File suggestions** — when history has no match, completes filenames from the current directory (`vim RE` → `vim README.md`)
-- **`hm` command** — ask AI for commands in plain English, powered by Claude Code
+- **`hm` command** — ask AI for commands in plain English, powered by Claude Code or local Ollama model
 - **~9ms per keystroke** — SQLite coproc, single-query scoring, zero fork overhead
 
 ## Confidence colors
@@ -156,13 +156,14 @@ $ hm
   Run it? [y/N/e(dit)]
 ```
 
-**Setup** — requires [Claude Code](https://claude.ai/claude-code) CLI installed:
+**Setup** — requires either [Claude Code](https://claude.ai/claude-code) or [Ollama](https://docs.ollama.com/cli) CLI installed:
 
 ```zsh
 zsage ai    # one-time setup, explains what happens, asks permission
 ```
 
-How it works: each `hm` call runs `claude -p` with your shell context (directory, git branch, recent commands). No sessions are saved — calls are ephemeral. Uses your existing Claude Code subscription.
+How it works: each `hm` call runs `claude -p` with your shell context (directory, git branch, recent commands). No sessions are saved — calls are ephemeral. If you chose to use Claude, it uses your existing Claude Code subscription.  Alternatively, Ollama
+allows you to use local models.
 
 ### Advanced: manual tuning
 
@@ -325,6 +326,7 @@ The first three versions were pure **optimizations** — same behavior, faster. 
 - `python3` (only for AI mode formatting)
 - `bc` (for scoring math in tests, not used in hot path)
 - [Claude Code](https://claude.ai/claude-code) CLI (optional, for `hm` command)
+- [Ollama](https://docs.ollama.com/cli) CLI (alternative to Claude)
 
 ## Uninstall
 
