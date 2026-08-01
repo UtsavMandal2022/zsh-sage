@@ -195,7 +195,7 @@ seq_stats AS (
     GROUP BY command
 )
 SELECT
-    REPLACE(REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), ''), CHAR(92), '') as clean_cmd,
+    REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), '') as clean_cmd,
     (
         ${wf} * (CASE WHEN gm.max_freq > 0
                  THEN MIN(1.0, SQRT(CAST(s.frequency AS REAL) / gm.max_freq))
@@ -227,7 +227,7 @@ LIMIT 1;"
 
     local result
     result=$(_sage_db_query "$sql")
-    [[ -n "$result" ]] && printf '%s' "${result%%|*}"
+    [[ -n "$result" ]] && printf '%s' "${result%%${_SAGE_SEP}*}"
 }
 
 # Same as _sage_rank_candidates but returns "score|command" for confidence coloring
@@ -240,7 +240,7 @@ _sage_rank_with_score() {
     local seq_override
     seq_override=$(_sage_sequence_override "$prefix" "$prev_cmd")
     if [[ -n "$seq_override" ]]; then
-        printf '0.95|%s' "$seq_override"
+        printf '0.95%s%s' "$_SAGE_SEP" "$seq_override"
         return
     fi
 
@@ -324,7 +324,7 @@ SELECT
                  THEN CAST(s.success_count AS REAL) / (s.success_count + s.fail_count)
                  ELSE 0.5 END)
     ) as score,
-    REPLACE(REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), ''), CHAR(92), '') as clean_cmd,
+    REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), '') as clean_cmd,
     -- Individual weighted contributions for adaptive weight learning
     ${wf} * (CASE WHEN gm.max_freq > 0
              THEN MIN(1.0, SQRT(CAST(s.frequency AS REAL) / gm.max_freq))
@@ -364,7 +364,7 @@ _sage_rank_top_n() {
     local seq_cmd=""
     seq_cmd=$(_sage_sequence_override "$prefix" "$prev_cmd")
     if [[ -n "$seq_cmd" ]]; then
-        seq_override="0.95|${seq_cmd}"
+        seq_override="0.95${_SAGE_SEP}${seq_cmd}"
         # Reduce limit by 1 since override takes a slot
         limit=$((limit - 1))
     fi
@@ -436,7 +436,7 @@ SELECT
                  THEN CAST(s.success_count AS REAL) / (s.success_count + s.fail_count)
                  ELSE 0.5 END)
     ) as score,
-    REPLACE(REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), ''), CHAR(92), '') as clean_cmd
+    REPLACE(REPLACE(s.command, CHAR(10), ' '), CHAR(13), '') as clean_cmd
 FROM stats s
 CROSS JOIN global_max gm
 LEFT JOIN dir_stats ds ON ds.command = s.command
@@ -456,7 +456,7 @@ LIMIT ${limit};"
         # Output rest, skipping the override command if it appears in scored results
         if [[ -n "$results" ]]; then
             echo "$results" | while IFS= read -r line; do
-                [[ "$line" == *"|${seq_cmd}" ]] && continue
+                [[ "$line" == *"${_SAGE_SEP}${seq_cmd}" ]] && continue
                 echo "$line"
             done
         fi
@@ -477,7 +477,7 @@ _sage_score_candidate() {
     local prev_cmd="$3"
     local now="$4"
 
-    # Parse pipe-delimited fields
+    # Parse pipe-delimited fields (test helper — fixtures use literal '|')
     local cmd="${candidate%%|*}";        candidate="${candidate#*|}"
     local freq="${candidate%%|*}";       candidate="${candidate#*|}"
     local last_used="${candidate%%|*}";  candidate="${candidate#*|}"

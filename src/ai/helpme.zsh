@@ -85,8 +85,8 @@ _sage_helpme_fix() {
         return 1
     fi
 
-    local last_cmd="${last_row%%|*}"
-    local last_exit="${last_row##*|}"
+    local last_cmd="${last_row%%${_SAGE_SEP}*}"
+    local last_exit="${last_row##*${_SAGE_SEP}}"
 
     if [[ "$last_exit" == "0" ]]; then
         echo "  Last command succeeded — nothing to fix."

@@ -125,12 +125,17 @@ _sage_update_suggestion() {
     local result
     result=$(_sage_rank_with_score "$prefix" "$PWD" "$_SAGE_PREV_COMMAND")
 
+    # Filesystem fallback: history knows nothing, maybe the cwd does (#19)
+    if [[ -z "$result" && "$ZSH_SAGE_FS_SUGGEST" == "true" ]]; then
+        result=$(_sage_strategy_fs "$prefix")
+    fi
+
     if [[ -n "$result" ]]; then
         # Split pipe-delimited result:
         # score|command|freq_contrib|rec_contrib|dir_contrib|seq_contrib|succ_contrib
         # (sequence override fast path returns only "score|command" — contribs will be empty)
         local -a fields
-        fields=("${(@s:|:)result}")
+        fields=("${(@ps:$_SAGE_SEP:)result}")
         local score="${fields[1]}"
         local suggestion="${fields[2]}"
 
@@ -231,6 +236,35 @@ _sage_accept_line_widget() {
     _sage_invoke_wrapped_widget accept-line
 }
 
+# ── Pre-redraw invariant check ───────────────────────────────────
+# Catches any widget that mutates BUFFER without going through one of
+# our wrappers (history navigation, undo, vi-mode edits, kill-ring
+# yanks, …). The invariant for live ghost text is:
+#   $_SAGE_CURRENT_SUGGESTION == $BUFFER$POSTDISPLAY  AND
+#   $_SAGE_CURRENT_SUGGESTION starts with $BUFFER
+# If either breaks, the ghost is stale — clear it.
+_sage_pre_redraw_widget() {
+    [[ -z "$POSTDISPLAY" ]] && return
+    if [[ "$_SAGE_CURRENT_SUGGESTION" != "$BUFFER$POSTDISPLAY" \
+       || "$_SAGE_CURRENT_SUGGESTION" != "$BUFFER"* ]]; then
+        _sage_highlight_reset
+        POSTDISPLAY=""
+        _sage_clear_state
+    fi
+}
+
+# Invokes the wrapped widget, then runs the invariant check and
+# regenerates a suggestion. Used to back up the line-pre-redraw hook
+# for widgets (e.g. completion) that don't reliably trigger a redraw,
+# and to refresh ghost text against the new buffer.
+_sage_post_invariant_widget() {
+    emulate -L zsh
+    _sage_invoke_wrapped_widget "$WIDGET"
+    _sage_pre_redraw_widget
+    _sage_update_suggestion
+    zle -R
+}
+
 # ── Cycle through alternatives (Ctrl+Space) ─────────────────────
 _sage_cycle_widget() {
     emulate -L zsh
@@ -245,6 +279,11 @@ _sage_cycle_widget() {
 
         local raw
         raw=$(_sage_rank_top_n "$prefix" "$PWD" "$_SAGE_PREV_COMMAND" "${ZSH_SAGE_CYCLE_COUNT:-8}")
+
+        # Filesystem fallback for cycling — same trigger as ghost text (#19)
+        if [[ -z "$raw" && "$ZSH_SAGE_FS_SUGGEST" == "true" ]]; then
+            raw=$(_sage_strategy_fs "$prefix" "${ZSH_SAGE_CYCLE_COUNT:-8}")
+        fi
 
         _SAGE_CYCLE_RESULTS=()
         if [[ -n "$raw" ]]; then
@@ -269,8 +308,8 @@ _sage_cycle_widget() {
 
     # Display the current cycle entry
     local entry="${_SAGE_CYCLE_RESULTS[$_SAGE_CYCLE_INDEX]}"
-    local score="${entry%%|*}"
-    local suggestion="${entry#*|}"
+    local score="${entry%%${_SAGE_SEP}*}"
+    local suggestion="${entry#*${_SAGE_SEP}}"
 
     if [[ -n "$suggestion" && "$suggestion" == "$prefix"* ]]; then
         _sage_highlight_reset
@@ -293,22 +332,6 @@ _sage_cycle_widget() {
         zle -M "suggestion ${_SAGE_CYCLE_INDEX}/${#_SAGE_CYCLE_RESULTS}"
     fi
 
-    zle -R
-}
-
-# ── Tab completion wrapper ───────────────────────────────────────
-# After tab completes a word, the buffer changes but our ghost text
-# stays stale. This wrapper clears stale ghost text, runs the real
-# completion, then re-suggests.
-_sage_complete_widget() {
-    _sage_highlight_reset
-    POSTDISPLAY=""
-
-    # Call the original expand-or-complete (saved before we override)
-    _sage_invoke_wrapped_widget expand-or-complete
-
-    # Re-suggest based on the now-completed buffer
-    _sage_update_suggestion
     zle -R
 }
 
@@ -348,19 +371,29 @@ _sage_invoke_wrapped_widget() {
 _sage_widget_init() {
     _sage_register_widget_wrapper _sage_accept_widget forward-char
     _sage_register_widget_wrapper _sage_accept_word_widget forward-word
+    zle -N sage-accept _sage_accept_widget
+    zle -N sage-accept-word _sage_accept_word_widget
     zle -N sage-dismiss _sage_dismiss_widget
     _sage_register_widget_wrapper _sage_accept_line_widget accept-line
     _sage_register_widget_wrapper _sage_suggest_widget self-insert
     _sage_register_widget_wrapper _sage_suggest_widget magic-space
 
-    _sage_register_widget_wrapper _sage_complete_widget expand-or-complete
-
     zle -N sage-cycle _sage_cycle_widget
     bindkey '^N' sage-cycle             # Ctrl+N (next suggestion)
+
+    # Completion can change BUFFER without triggering line-pre-redraw
+    # on every setup, so explicitly run the invariant check after.
+    _sage_register_widget_wrapper _sage_post_invariant_widget expand-or-complete
+    _sage_register_widget_wrapper _sage_post_invariant_widget complete-word
 
     _sage_register_widget_wrapper _sage_backward_kill_word backward-kill-word
     _sage_register_widget_wrapper _sage_backward_delete_char backward-delete-char
     _sage_register_widget_wrapper _sage_bracketed_paste bracketed-paste
+
+    # Single hook catches any other widget that mutates BUFFER behind
+    # our back (history nav, undo, vi edits, …) — no per-widget wrapping.
+    autoload -Uz add-zle-hook-widget
+    add-zle-hook-widget line-pre-redraw _sage_pre_redraw_widget
 }
 
 # ── Backspace handler ────────────────────────────────────────────

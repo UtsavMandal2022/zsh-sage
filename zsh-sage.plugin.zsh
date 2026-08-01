@@ -8,12 +8,18 @@ ZSH_SAGE_DIR="${0:A:h}"
 # ── Configuration with defaults ──────────────────────────────────────
 typeset -g ZSH_SAGE_DB="${ZSH_SAGE_DB:-$HOME/.zsh-sage/sage.db}"
 typeset -g ZSH_SAGE_HIGHLIGHT_STYLE="${ZSH_SAGE_HIGHLIGHT_STYLE:-fg=8}"
-typeset -g ZSH_SAGE_ACCEPT_KEY="${ZSH_SAGE_ACCEPT_KEY:-forward-char}"
 typeset -g ZSH_SAGE_AI_ENABLED="${ZSH_SAGE_AI_ENABLED:-false}"
 typeset -g ZSH_SAGE_MAX_CANDIDATES="${ZSH_SAGE_MAX_CANDIDATES:-10}"
 
 # Number of suggestions to cycle through with Ctrl+Space
 typeset -g ZSH_SAGE_CYCLE_COUNT="${ZSH_SAGE_CYCLE_COUNT:-8}"
+
+# Filesystem fallback — when history has no suggestion, suggest a file
+# from the current directory (like zsh-autosuggestions' completion
+# suggestions, but a pure glob: fast, no compsys). Rendered in the
+# faint color bucket and excluded from weight learning.
+typeset -g ZSH_SAGE_FS_SUGGEST="${ZSH_SAGE_FS_SUGGEST:-true}"
+typeset -g ZSH_SAGE_FS_SCORE="${ZSH_SAGE_FS_SCORE:-0.15}"
 
 # Recency half-life in seconds — how fast old commands fade
 # Default: 3 days (command from 3 days ago scores 0.5, from 1 week ago ~0.2)
@@ -73,6 +79,7 @@ source "$ZSH_SAGE_DIR/src/core/collector.zsh"
 source "$ZSH_SAGE_DIR/src/core/scorer.zsh"
 source "$ZSH_SAGE_DIR/src/core/widget.zsh"
 source "$ZSH_SAGE_DIR/src/strategies/local.zsh"
+source "$ZSH_SAGE_DIR/src/strategies/fs.zsh"
 source "$ZSH_SAGE_DIR/src/core/cli.zsh"
 
 # AI commands — only loaded when explicitly enabled

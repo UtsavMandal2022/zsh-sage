@@ -32,9 +32,9 @@ You type:   git co
                    ╭──────────────────────────────────────╮
                    │  frequency    git commit: 300 uses   │
                    │  recency      used 2 minutes ago     │
-                   │  directory    in ~/project (common)   │
-                   │  sequence     after "git add ."       │
-                   │  success      100% exit code 0        │
+                   │  directory    in ~/project (common)  │
+                   │  sequence     after "git add ."      │
+                   │  success      100% exit code 0       │
                    ╰──────────────────────────────────────╯
 Suggestion: git commit -m 'update'
             ~~~~~~~~~~~~~~~~~~~~~~  (sage green = high confidence)
@@ -55,6 +55,7 @@ Everything below works out of the box — no configuration needed.
 - **Failure penalty** — typos and broken commands get demoted
 - **Learns from you** — every accepted suggestion tunes the ranking over time
 - **Cycle through alternatives** — press Ctrl+N to browse ranked suggestions, confidence color updates with each one
+- **File suggestions** — when history has no match, completes filenames from the current directory (`vim RE` → `vim README.md`)
 - **`hm` command** — ask AI for commands in plain English, powered by Claude Code
 - **~9ms per keystroke** — SQLite coproc, single-query scoring, zero fork overhead
 
@@ -113,6 +114,17 @@ This seeds the database with your past commands. Sequence data (what follows wha
 ## Configuration
 
 **Most users don't need to configure anything.** zsh-sage adapts to your habits automatically — it shifts between frequency-heavy and recency-heavy ranking based on how much you've typed, learns which command follows which from your history, and scopes suggestions to the current directory. Just install it and use your shell normally.
+
+### Filesystem fallback
+
+When your history has no suggestion for what you're typing, zsh-sage falls back to suggesting a matching file or directory from the current directory — `vim RE` suggests `vim README.md` even if you've never run that command. Directories are marked with a trailing `/`, and Ctrl+N cycles through the other matches. Fallback suggestions render in the faintest ghost color (they're a guess, not a habit) and never feed the adaptive-weight learning.
+
+```zsh
+export ZSH_SAGE_FS_SUGGEST=false   # disable it (default: true)
+export ZSH_SAGE_FS_SCORE=0.15      # score/color bucket for fallback ghosts
+```
+
+Details: it's a pure zsh glob, not the completion system — words containing `~`, `$VAR`, quotes, or glob characters are left alone, matching is case-sensitive, and dotfiles only match when you've typed the leading `.`. In command position (first word) it only fires for explicit paths like `./scr`.
 
 ### AI commands (`hm`)
 
@@ -221,13 +233,27 @@ zsage help       # Full usage info with color reference
 | `hm <question>` | Ask AI for a command |
 | `hm` | AI suggests a fix for your last failed command |
 
-### Optional opt-in bindings
+### Custom key bindings
 
-zsh-sage exposes `sage-dismiss` as a user-bindable widget that clears the current ghost text without inserting anything. It ships unbound — pick a key that doesn't conflict with your setup:
+Every action is exposed as a named ZLE widget, so you can bind any of them to your own keys:
+
+| Widget | Action | Default key |
+|---|---|---|
+| `sage-accept` | Accept the full suggestion | Right arrow (via wrapped `forward-char`) |
+| `sage-accept-word` | Accept the next word | Option+Right / Ctrl+Right (via wrapped `forward-word`) |
+| `sage-cycle` | Cycle through alternatives | Ctrl+N |
+| `sage-dismiss` | Clear the ghost text without inserting anything | unbound |
+
+Add `bindkey` lines to your `.zshrc` **after** the plugin is sourced (and after `bindkey -v` if you use vi mode — switching keymaps resets earlier bindings). Example for a vi-mode setup that avoids the arrow keys:
 
 ```zsh
-bindkey '^G' sage-dismiss    # Ctrl+G
+bindkey '^E' sage-accept        # Ctrl+E — accept whole suggestion
+bindkey '^F' sage-accept-word   # Ctrl+F — accept next word
+bindkey '^N' sage-cycle         # Ctrl+N — cycle alternatives (default)
+bindkey '^G' sage-dismiss       # Ctrl+G — dismiss ghost text
 ```
+
+The default arrow-key behavior stays intact alongside your custom keys. When no ghost text is showing, `sage-accept` and `sage-accept-word` fall through to plain cursor movement (`forward-char` / `forward-word`), so the keys stay harmless mid-line.
 
 ## Scoring signals explained
 
