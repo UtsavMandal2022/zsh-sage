@@ -25,3 +25,6 @@
 sage.db
 sage.db-shm
 sage.db-wal
+
+# Claude Code session data and worktrees
+.claude/
