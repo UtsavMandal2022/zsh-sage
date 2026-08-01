@@ -162,8 +162,15 @@ $ hm
 zsage ai    # one-time setup, explains what happens, asks permission
 ```
 
-How it works: each `hm` call runs `claude -p` with your shell context (directory, git branch, recent commands). No sessions are saved — calls are ephemeral. If you chose to use Claude, it uses your existing Claude Code subscription.  Alternatively, Ollama
-allows you to use local models.
+How it works: each `hm` call sends your shell context (directory, git branch, recent commands) to the provider you picked. No sessions are saved — calls are ephemeral. Claude uses your existing Claude Code subscription; Ollama runs a model locally, fully offline.
+
+**Choosing an Ollama model** — by default zsh-sage uses whatever model is currently loaded, falling back to the most recently installed one. Pick a specific model with:
+
+```zsh
+export ZSH_SAGE_OLLAMA_MODEL="qwen2.5:3b"
+```
+
+Suggestion quality tracks model size: tiny models (under ~3B parameters) frequently return wrong or irrelevant commands. A 3B+ model is the recommended minimum; 7B+ if your machine can handle it.
 
 ### Advanced: manual tuning
 
