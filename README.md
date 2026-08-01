@@ -233,13 +233,27 @@ zsage help       # Full usage info with color reference
 | `hm <question>` | Ask AI for a command |
 | `hm` | AI suggests a fix for your last failed command |
 
-### Optional opt-in bindings
+### Custom key bindings
 
-zsh-sage exposes `sage-dismiss` as a user-bindable widget that clears the current ghost text without inserting anything. It ships unbound — pick a key that doesn't conflict with your setup:
+Every action is exposed as a named ZLE widget, so you can bind any of them to your own keys:
+
+| Widget | Action | Default key |
+|---|---|---|
+| `sage-accept` | Accept the full suggestion | Right arrow (via wrapped `forward-char`) |
+| `sage-accept-word` | Accept the next word | Option+Right / Ctrl+Right (via wrapped `forward-word`) |
+| `sage-cycle` | Cycle through alternatives | Ctrl+N |
+| `sage-dismiss` | Clear the ghost text without inserting anything | unbound |
+
+Add `bindkey` lines to your `.zshrc` **after** the plugin is sourced (and after `bindkey -v` if you use vi mode — switching keymaps resets earlier bindings). Example for a vi-mode setup that avoids the arrow keys:
 
 ```zsh
-bindkey '^G' sage-dismiss    # Ctrl+G
+bindkey '^E' sage-accept        # Ctrl+E — accept whole suggestion
+bindkey '^F' sage-accept-word   # Ctrl+F — accept next word
+bindkey '^N' sage-cycle         # Ctrl+N — cycle alternatives (default)
+bindkey '^G' sage-dismiss       # Ctrl+G — dismiss ghost text
 ```
+
+The default arrow-key behavior stays intact alongside your custom keys. When no ghost text is showing, `sage-accept` and `sage-accept-word` fall through to plain cursor movement (`forward-char` / `forward-word`), so the keys stay harmless mid-line.
 
 ## Scoring signals explained
 

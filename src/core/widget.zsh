@@ -371,6 +371,8 @@ _sage_invoke_wrapped_widget() {
 _sage_widget_init() {
     _sage_register_widget_wrapper _sage_accept_widget forward-char
     _sage_register_widget_wrapper _sage_accept_word_widget forward-word
+    zle -N sage-accept _sage_accept_widget
+    zle -N sage-accept-word _sage_accept_word_widget
     zle -N sage-dismiss _sage_dismiss_widget
     _sage_register_widget_wrapper _sage_accept_line_widget accept-line
     _sage_register_widget_wrapper _sage_suggest_widget self-insert

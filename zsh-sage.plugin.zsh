@@ -8,7 +8,6 @@ ZSH_SAGE_DIR="${0:A:h}"
 # ── Configuration with defaults ──────────────────────────────────────
 typeset -g ZSH_SAGE_DB="${ZSH_SAGE_DB:-$HOME/.zsh-sage/sage.db}"
 typeset -g ZSH_SAGE_HIGHLIGHT_STYLE="${ZSH_SAGE_HIGHLIGHT_STYLE:-fg=8}"
-typeset -g ZSH_SAGE_ACCEPT_KEY="${ZSH_SAGE_ACCEPT_KEY:-forward-char}"
 typeset -g ZSH_SAGE_AI_ENABLED="${ZSH_SAGE_AI_ENABLED:-false}"
 typeset -g ZSH_SAGE_MAX_CANDIDATES="${ZSH_SAGE_MAX_CANDIDATES:-10}"
 
