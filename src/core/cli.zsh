@@ -58,13 +58,13 @@ zsage() {
             _sage_cli_ai
             ;;
         profile)
-            _sage_cli_profile "$2"
+            _sage_cli_profile "${2:-}"
             ;;
         stats)
             _sage_cli_stats
             ;;
         weights)
-            _sage_cli_weights "$2"
+            _sage_cli_weights "${2:-}"
             ;;
         version|-v|--version)
             echo "zsh-sage v${_SAGE_VERSION}"
